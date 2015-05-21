@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import collections as co
 import cairo
 import math
+import pdb
 
 class Color:
 	def __init__(self, r, g, b, a=1.0):
@@ -102,23 +103,24 @@ class Wall:
 	def __init__(self, initPos=Point(0, 0), sz=Point(4, 100), 
 							 fColor=Color(1.0, 0.0, 0.0), name=None):
 		self.sz_     = sz
-		self.pos_    = stPoint
+		self.pos_    = initPos
 		self.fColor_ = fColor
 		self.name_   = name
 		self.make_data()
 
 	@classmethod
 	def from_def(cls, wallDef, name, initPos):
-		self       = cls(sz=wall.sz, fColor=wall.fColor)
+		self       = cls(sz=wallDef.sz, fColor=wallDef.fColor)
 		self.name_ = name
 		self.pos_  = initPos
+		return self
 
 	#Make cairo data
 	def make_data(self):
 		cr, im = get_rectangle_im(sz=self.sz_, fColor=self.fColor_)
 		self.data_      = CairoData(cr, im)	
 
-	def name():
+	def name(self):
 		return self.name_
 
 
@@ -155,17 +157,27 @@ class Ball:
 							 sColor=ballDef.sColor, fColor=ballDef.fColor)
 		self.name_ = name
 		self.pos_  = initPos
+		return self
 
 	def set_name(self, name):
 		self.name_ = name
 
 	#Make cairo data
-	def make_data():
+	def make_data(self):
 		cr, im      = get_ball_im(radius=self.radius_, fColor=self.fColor_,
-														  sThick=self.sThick_, sColor=self.sColor_):
+														  sThick=self.sThick_, sColor=self.sColor_)
 		self.data_  = CairoData(cr, im)	
+		self.ySz_, self.xSz_   = im.shape[0], im.shape[1]
+		self.yOff_, self.xOff_ = np.floor(self.ySz_ / 2), np.floor(self.xSz_ / 2)
 
-	def name():
+	#Imprint the ball
+	def imprint(self, cr, xSz, ySz):
+		#Get the position of bottom left corner.
+		y, x  = self.pos_.y() - self.yOff_, self.pos_.x() - self.xOff_		
+		srcIm = np.zeros((xSz, ySz, 4), dType=np.uint8)
+		srcIm[y:y+self.ySz_, x:x+self.xSz_,:] = self.data_.im[:,:,:] 
+
+	def name(self):
 		return self.name_
 
 
@@ -184,7 +196,7 @@ class World:
 		#Form the base canvas
 		self.xSz_     = xSz
 		self.ySz_     = ySz 
-		cr, im        = get_rectangle_im(sz=Point(xSz,ySz), fColor(1.0,1.0,1.0))
+		cr, im        = get_rectangle_im(sz=Point(xSz,ySz), fColor=Color(1.0,1.0,1.0))
 		self.baseCanvas_ = CairoData(cr, im)
 
 	#Contains the names of primitives that the world
@@ -201,7 +213,7 @@ class World:
 			obj     = Wall.from_def(objDef, name, initPos)
 			objType = 'static' 
 			self.count_['wall'] += 1
-		elif isinstance(objDef, Ball):
+		elif isinstance(objDef, BallDef):
 			name    = 'ball-%d' % self.count_['ball']					
 			obj     = Ball.from_def(objDef, name, initPos)
 			objType = 'dynamic'
@@ -218,7 +230,7 @@ class World:
 			objDef : The definition of the object that needs to be added.
 			initPos: The initial position of the object in the normalized coords.
 		'''
-		obj, name, objType = get_object_name_type(objDef, initPos)
+		obj, name, objType = self.get_object_name_type(objDef, initPos)
 		if name in self.objects_.keys():
 			raise Exception('Object with name %s already exists' % name)
 		self.objects_[name] = obj
@@ -226,4 +238,12 @@ class World:
 			self.static_[name]  = obj
 		else:
 			self.dynamic_[name] = obj		
+	
+
+	def generate_image(self):
+		data    = np.zeros((self.ySz_, self.xSz_, 4), dtype=np.uint8)
+		data[:] = self.baseCanvas_.im[:]
+		surface = cairo.ImageSurface.create_for_data(data, 
+								cairo.FORMAT_ARGB32, self.ySz_, self.xSz_)
+		cr      = cairo.Context(surface)
 		
