@@ -4,6 +4,7 @@ import collections as co
 import cairo
 import math
 import pdb
+import geometry as gm
 
 class Color:
 	def __init__(self, r, g, b, a=1.0):
@@ -17,74 +18,6 @@ class CairoData:
 	def __init__(self, cr, im):
 		self.cr = cr
 		self.im = im
-
-
-class Point:
-	def __init__(self, x=0, y=0):
-		self.x_ = x
-		self.y_ = y
-
-	@classmethod
-	def from_self(cls, other):
-		self = cls(x=other.x, y=other.y)
-		return self
-
-	def x(self):
-		return self.x_
-
-	def y(self):
-		return self.y_
-
-	def mag(self):
-		return np.sqrt(self.x_ * self.x_ + self.y_ * self.y_)
-
-	def scale(self, xScale, yScale=None):
-		self.x_ = xScale * self.x_
-		if yScale is None:
-			self.y_ = xScale * self.y_
-		else:
-			self.y_ = yScale * self.y_
-
-	def __add__(self, other):	
-		p = Point()
-		p.x_ = self.x_ + other.x_
-		p.y_ = self.y_ + other.y_
-		return p
-
-	def __sub__(self, other):	
-		p = Point()
-		p.x_ = self.x_ - other.x_
-		p.y_ = self.y_ - other.y_
-		return p
-
-
-class Line:
-	def __init__(self, pt1, pt2):
-		#The line points from st_ to en_
-		self.st_ = pt1
-		self.en_ = pt2
-
-	def make_canonical(self):
-		'''
-			ax + by + c = 0
-		'''
-		self.a_ = -(self.en_.y() - self.st_.y())
-		self.b_ =  self.en_.x() - self.st_.x()
-		self.c_ = self.st_.x() * self.en_.y() - self.st_.y() * self.en_.x()
-
-	def get_point_location(self, pt, tol=1e-6):
-		'''
-			returns: 1 is point is above the line (i.e. moving counter-clockwise from the line)
-							-1 if the point is below
-							 0 if on the line
-		'''
-		val = self.a_ * pt.x() + self.b_ * pt.y() + self.c_
-		if val > tol:
-			return 1
-		elif val < -tol:
-			return -1
-		else:
-			return 0 
 
 	
 def get_ball_im(radius=40, fColor=Color(0.0, 0.0, 1.0), sThick=2, sColor=None):
@@ -118,7 +51,7 @@ def get_ball_im(radius=40, fColor=Color(0.0, 0.0, 1.0), sThick=2, sColor=None):
 	return cr, data
 
 
-def get_rectangle_im(sz=Point(4,100), fColor=Color(1.0, 0.0, 0.0)):
+def get_rectangle_im(sz=gm.Point(4,100), fColor=Color(1.0, 0.0, 0.0)):
 	data    = np.zeros((sz.y(), sz.x(), 4), dtype=np.uint8)
 	surface = cairo.ImageSurface.create_for_data(data, 
 							cairo.FORMAT_ARGB32, sz.x(), sz.y())
@@ -137,7 +70,7 @@ def get_rectangle_im(sz=Point(4,100), fColor=Color(1.0, 0.0, 0.0)):
 ##
 #Wall def just defines the physical properties. 
 class WallDef:
-	def __init__(self,  sz=Point(4, 100), 
+	def __init__(self,  sz=gm.Point(4, 100), 
 							 fColor=Color(1.0, 0.0, 0.0), name=None):
 		self.sz        = sz
 		self.fColor    = fColor
@@ -146,7 +79,7 @@ class WallDef:
 ##
 # Defines the physical properties along with the location etc of the object. 
 class Wall:
-	def __init__(self, initPos=Point(0, 0), sz=Point(4, 100), 
+	def __init__(self, initPos=gm.Point(0, 0), sz=gm.Point(4, 100), 
 							 fColor=Color(1.0, 0.0, 0.0), name=None):
 		self.sz_     = sz
 		self.pos_    = initPos
@@ -169,9 +102,9 @@ class Wall:
 	#Make the coordinates of the four corners
 	def make_coordinates(self):
 		self.lTop_ = self.pos_
-		self.lBot_ = self.pos_ + Point(0, self.sz_.y())
-		self.rTop_ = self.pos_ + Point(self.sz_.x(), 0)
-		self.rBot_ = self.pos_ + Point(self.sz_.x(), self.sz_.y())
+		self.lBot_ = self.pos_ + gm.Point(0, self.sz_.y())
+		self.rTop_ = self.pos_ + gm.Point(self.sz_.x(), 0)
+		self.rBot_ = self.pos_ + gm.Point(self.sz_.x(), self.sz_.y())
 		self.l1_   = Line(self.lTop_, self.lBot_) #Left line
 		self.l2_   = Line(self.lBot_, self.rBot_)
 		self.l3_   = Line(self.rBot_, self.rTop_)
@@ -202,22 +135,22 @@ class Wall:
 		#If the particle is to the left. 
 		if ((self.l1_.get_point_location(pt) == -1 and self.l3_.get_point_location(pt)==1) or
 				 self.l1_.get_point_location(pt) == 0):
-			return Point((-1,0))
+			return gm.Point((-1,0))
 		
 		#If the particle is on the right. 	
 		if ((self.l1_.get_point_location(pt) == 1 and self.l3_.get_point_location(pt) == -1) or
 				 self.l3_.get_point_location(pt) == 0):
-			return Point((1,0))
+			return gm.Point((1,0))
 
 		#If the particle is on the top
 		if ((self.l2_.get_point_location(pt) == 1 and self.l4_.get_point_location(pt) == -1) or
 				 self.l4_.get_point_location(pt) == 0):
-			return Point((0,1))
+			return gm.Point((0,1))
 
 		#If the particle is on the bottom
 		if ((self.l2_.get_point_location(pt) == -1 and self.l4_.get_point_location(pt) == 1) or:
 				 self.l2_.get_point_location(pt) == 0):
-			return Point((0,-1))
+			return gm.Point((0,-1))
 
 	def name(self):
 		return self.name_
@@ -241,7 +174,7 @@ class BallDef:
 class Ball:
 	def __init__(self, radius=20, sThick=2, 
 							 sColor=Color(0.0, 0.0, 0.0), fColor=Color(1.0, 0.0, 0.0),
-							 name=None, initPos=Point(0,0), initVel=Point(0,0)):
+							 name=None, initPos=gm.Point(0,0), initVel=gm.Point(0,0)):
 		self.radius_    = radius
 		self.sThick_    = sThick
 		self.sColor_    = sColor
@@ -253,7 +186,7 @@ class Ball:
 		self.make_data()
 
 	@classmethod
-	def from_def(cls, ballDef, name, initPos, initVel=Point(0,0)):
+	def from_def(cls, ballDef, name, initPos, initVel=gm.Point(0,0)):
 		self = cls(radius=ballDef.radius, sThick=ballDef.sThick, 
 							 sColor=ballDef.sColor, fColor=ballDef.fColor)
 		self.name_ = name
@@ -306,7 +239,7 @@ class Dynamics():
 			g: gravity, since the (0,0) is top left, gravity will be positive. 
 		'''
 		self.world_  = world
-		self.g_      = Point(0, g)
+		self.g_      = gm.Point(0, g)
 		self.deltaT_ = deltaT
 		#Record which objects have been stepped and which have not been.
 		self.isStep_ = co.OrderedDict()
@@ -379,7 +312,7 @@ class Dynamics():
 	def get_time_to_collide(self, obj, name):
 		#The line that represents the motion vector of the object
 		vel = obj.get_velocity()
-		los = Line(Point(0,0), vel)			
+		los = Line(gm.Point(0,0), vel)			
 		
 		allNames = self.world_.get_object_names()
 		for an in allNames:
@@ -396,7 +329,7 @@ class World:
 		self.static_  = co.OrderedDict()
 		#Dynamic Objects
 		self.dynamic_ = co.OrderedDict()
-		#Pointers to all objects
+		#gm.Pointers to all objects
 		self.objects_ = co.OrderedDict()
 		#Count of objects
 		self.count_   = co.OrderedDict()
@@ -404,7 +337,7 @@ class World:
 		#Form the base canvas
 		self.xSz_     = xSz
 		self.ySz_     = ySz 
-		cr, im        = get_rectangle_im(sz=Point(xSz,ySz), fColor=Color(1.0,1.0,1.0))
+		cr, im        = get_rectangle_im(sz=gm.Point(xSz,ySz), fColor=Color(1.0,1.0,1.0))
 		self.baseCanvas_ = CairoData(cr, im)
 
 	#Contains the names of primitives that the world
@@ -444,7 +377,7 @@ class World:
 		return obj, name, objType
 
 	##
-	def add_object(self, objDef, initPos=Point(0,0)):
+	def add_object(self, objDef, initPos=gm.Point(0,0)):
 		'''
 			objDef : The definition of the object that needs to be added.
 			initPos: The initial position of the object in the normalized coords.
