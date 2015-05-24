@@ -197,3 +197,17 @@ class Bbox:
 				intPoint = pt
 				dist     = distTmp
 		return intPoint, dist
+
+	#Get time of collision with another bounding box. 
+	def get_toc_with_bbox(self, bbox, vel):
+		'''
+			self: is assumed to be stationary
+			bbox: the other boundig bbox
+			vel:  the velocity vector of bbox in frame of reference of self. 
+		'''
+		pts = []
+		pts.append(self.get_intersection_with_line(gm.Line(bbox.lTop_, bbox.lTop_ + vel))[0])
+		pts.append(self.get_intersection_with_line(gm.Line(bbox.lBot_, bbox.lBot_ + vel))[0])
+		pts.append(self.get_intersection_with_line(gm.Line(bbox.rBot_, bbox.rBot_ + vel))[0])
+		pts.append(self.get_intersection_with_line(gm.Line(bbox.rTop_, bbox.rTop_ + vel))[0])
+		
