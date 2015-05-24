@@ -58,7 +58,35 @@ class Point:
 		return p
 
 
+class Line:
+	def __init__(self, pt1, pt2):
+		#The line points from st_ to en_
+		self.st_ = pt1
+		self.en_ = pt2
 
+	def make_canonical(self):
+		'''
+			ax + by + c = 0
+		'''
+		self.a_ = -(self.en_.y() - self.st_.y())
+		self.b_ =  self.en_.x() - self.st_.x()
+		self.c_ = self.st_.x() * self.en_.y() - self.st_.y() * self.en_.x()
+
+	def get_point_location(self, pt, tol=1e-6):
+		'''
+			returns: 1 is point is above the line (i.e. moving counter-clockwise from the line)
+							-1 if the point is below
+							 0 if on the line
+		'''
+		val = self.a_ * pt.x() + self.b_ * pt.y() + self.c_
+		if val > tol:
+			return 1
+		elif val < -tol:
+			return -1
+		else:
+			return 0 
+
+	
 def get_ball_im(radius=40, fColor=Color(0.0, 0.0, 1.0), sThick=2, sColor=None):
 	'''
 		fColor: fill color
@@ -130,13 +158,24 @@ class Wall:
 	def from_def(cls, wallDef, name, initPos):
 		self       = cls(sz=wallDef.sz, fColor=wallDef.fColor)
 		self.name_ = name
-		self.pos_  = initPos
+		self.pos_  = initPos #The upper left corner
 		return self
 
 	#Make cairo data
 	def make_data(self):
 		cr, im = get_rectangle_im(sz=self.sz_, fColor=self.fColor_)
 		self.data_      = CairoData(cr, im)	
+
+	#Make the coordinates of the four corners
+	def make_coordinates(self):
+		self.lTop_ = self.pos_
+		self.lBot_ = self.pos_ + Point(0, self.sz_.y())
+		self.rTop_ = self.pos_ + Point(self.sz_.x(), 0)
+		self.rBot_ = self.pos_ + Point(self.sz_.x(), self.sz_.y())
+		self.l1_   = Line(self.lTop_, self.lBot_) #Left line
+		self.l2_   = Line(self.lBot_, self.rBot_)
+		self.l3_   = Line(self.rBot_, self.rTop_)
+		self.l4_   = Line(self.rTop_, self.lTop_)
 
 	#Imprint the wall
 	def imprint(self, cr, xSz, ySz):
@@ -153,6 +192,32 @@ class Wall:
 		cr.fill()
 		print "Wall- x: %d, y: %d, szX: %d, szY: %d" % (x, y, self.sz_.x(), self.sz_.y())
 
+	#Gives the normal that are needed to solve for collision. 
+	def get_collision_normal(self, pt):
+		'''
+			The wall has 4 faces and a normal associated with each of these faces.
+			we would basically determine where the point lies and then generate
+			collisions based on that. 
+		'''	
+		#If the particle is to the left. 
+		if ((self.l1_.get_point_location(pt) == -1 and self.l3_.get_point_location(pt)==1) or
+				 self.l1_.get_point_location(pt) == 0):
+			return Point((-1,0))
+		
+		#If the particle is on the right. 	
+		if ((self.l1_.get_point_location(pt) == 1 and self.l3_.get_point_location(pt) == -1) or
+				 self.l3_.get_point_location(pt) == 0):
+			return Point((1,0))
+
+		#If the particle is on the top
+		if ((self.l2_.get_point_location(pt) == 1 and self.l4_.get_point_location(pt) == -1) or
+				 self.l4_.get_point_location(pt) == 0):
+			return Point((0,1))
+
+		#If the particle is on the bottom
+		if ((self.l2_.get_point_location(pt) == -1 and self.l4_.get_point_location(pt) == 1) or:
+				 self.l2_.get_point_location(pt) == 0):
+			return Point((0,-1))
 
 	def name(self):
 		return self.name_
@@ -176,21 +241,24 @@ class BallDef:
 class Ball:
 	def __init__(self, radius=20, sThick=2, 
 							 sColor=Color(0.0, 0.0, 0.0), fColor=Color(1.0, 0.0, 0.0),
-							 name=None, initPos=Point(0,0)):
+							 name=None, initPos=Point(0,0), initVel=Point(0,0)):
 		self.radius_    = radius
 		self.sThick_    = sThick
 		self.sColor_    = sColor
 		self.fColor_    = fColor
 		self.name_      = name
 		self.pos_       = initPos
+		self.tCol_      = 0
+		self.vel_       = initVel
 		self.make_data()
 
 	@classmethod
-	def from_def(cls, ballDef, name, initPos):
+	def from_def(cls, ballDef, name, initPos, initVel=Point(0,0)):
 		self = cls(radius=ballDef.radius, sThick=ballDef.sThick, 
 							 sColor=ballDef.sColor, fColor=ballDef.fColor)
 		self.name_ = name
 		self.pos_  = initPos
+		self.vel_  = initVel
 		return self
 
 	def set_name(self, name):
@@ -221,32 +289,101 @@ class Ball:
 
 	def get_position(self):
 		return self.pos_
+	
+	def get_velocity(self):
+		return self.vel_
 
 	def set_position(self, pos):
 		self.pos_ = pos
 
+	def set_velocity(self, vel):
+		self.vel_ = vel
+
 
 class Dynamics():
-	def __init__(self, v=Point(0,0), g=0, deltaT=0.1):
+	def __init__(self, world, g=0, deltaT=0.01):
 		'''
-			v: velocities
 			g: gravity, since the (0,0) is top left, gravity will be positive. 
 		'''
-		self.v_  = v
-		self.g_  = Point(0, g)
-		self.deltaT_ = deltaT	
+		self.world_  = world
+		self.g_      = Point(0, g)
+		self.deltaT_ = deltaT
+		#Record which objects have been stepped and which have not been.
+		self.isStep_ = co.OrderedDict()
+		#Record time to collide and object of collision
+		self.tCol_   = co.OrderedDict()
+		self.objCol_ = co.OrderedDict()
+		for name in self.get_dynamic_object_names():
+			self.isStep_[name] = False
+			self.tCol_[name] = 0
+			self.objCol_[name] = None
 
-	def set_v(self, v):
-		self.v_ = v
-
+	#Set gravity
 	def set_g(self, g):
 		self.g_ = g
 
-	def step(self, obj):
-		pos = obj.get_position()
-		#s = ut + 0.5at^2
-		pos = pos + self.v_.scale(self.deltaT_) + self.g_.scale(0.5 * self.deltaT_ * self.deltaT_)	
+	#Get names of objects
+	def get_dynamic_object_names(self):
+		return self.world_.get_dynamic_object_names()
 
+	def step_object(self, obj, name):
+		if self.isStep_[name]:
+			return
+		if self.tCol_[name] < self.deltaT_:
+			self.resolve_collision(obj, name)
+			return
+		pos = obj.get_position()
+		vel = obj.get_velocity()
+		velMag = vel.mag()
+		#Update position: s = ut + 0.5at^2
+		pos = pos + self.v_.scale(self.deltaT_) + self.g_.scale(0.5 * self.deltaT_ * self.deltaT_)	
+		#Update velocity: v = u + at
+		vel = vel + self.g_.scale(self.deltaT_)
+		#If a sationary object has been set to motion, then perform resolve_collision
+		if velMag == 0 and vel.mag() > 0:
+			self.resolve_collision(obj, name) 
+		self.isStep_[name] = True
+
+	#Step the entire world
+	def step(self):
+		#Reset step states
+		for name in self.get_dynamic_object_names():
+			self.isStep_[name] = False
+		#Step every object
+		for name in self.get_dynamic_object_names():
+			self.step_object(self.world_.get_object(name), name)
+		 
+	#Resolve the collisions
+	def resolve_collision(self, obj, name):
+		pos = obj.get_position()
+		vel = obj.get_velocity()
+		#Stationary object
+		if vel.mag() == 0:
+			self.tCol_[name] = np.inf
+			self.step_object(self, obj, name)
+			return	
+		#Stationary object just set into motion
+		if self.tCol_[name]==np.inf and vel.mag() > 0:
+			#Detect Collisions
+
+	def detect_collision(self, los, obj):
+	'''
+		los: Line of Sight - the direction of velocity vector of object 1
+		obj: The second object.
+		     if corners of bbox of obj lie on opposite sides of los then there
+				 will be a collision. 
+	'''
+			
+
+	#Get time to collision
+	def get_time_to_collide(self, obj, name):
+		#The line that represents the motion vector of the object
+		vel = obj.get_velocity()
+		los = Line(Point(0,0), vel)			
+		
+		allNames = self.world_.get_object_names()
+		for an in allNames:
+							
 
 #The world
 class World:
@@ -276,8 +413,20 @@ class World:
 		self.count_['wall'] = 0
 		self.count_['ball'] = 0
 
+	#Names of dynamic objects
+	def get_dynamic_object_names(self):
+		return self.dynamic_.keys()
+
+	#Get object names
+	def get_object_names(self):
+		return self.objects_.keys()
+
 	##
-	#
+	def get_object(self, name):
+		assert name in self.objects_.keys(), 'Object: %s not found' % name
+		return self.objects_[name]
+
+	##
 	def get_object_name_type(self, objDef, initPos):
 		if isinstance(objDef, WallDef):
 			name    = 'wall-%d' % self.count_['wall']
@@ -295,7 +444,6 @@ class World:
 		return obj, name, objType
 
 	##
-	#
 	def add_object(self, objDef, initPos=Point(0,0)):
 		'''
 			objDef : The definition of the object that needs to be added.
