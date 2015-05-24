@@ -38,6 +38,9 @@ class Point:
 		p.y_ = self.y_ - other.y_
 		return p
 
+	def __str__(self):
+		return '(%.2f, %.2f)' % (self.x_, self.y_)
+
 	#Does a point lie on quadrant 1 if the current point is the origin
 	def is_quad1(self, pt):
 		return pt.x() >= self.x_ and pt.y() >= self.y_
@@ -68,29 +71,33 @@ class Line:
 		#The line points from st_ to en_
 		self.st_ = pt1
 		self.en_ = pt2
+		self.make_canonical()
 
 	def make_canonical(self):
 		'''
 			ax + by + c = 0
 		'''
-		self.a_ = -(self.en_.y() - self.st_.y())
-		self.b_ =  self.en_.x() - self.st_.x()
-		self.c_ = self.st_.x() * self.en_.y() - self.st_.y() * self.en_.x()
+		self.a_ = float(-(self.en_.y() - self.st_.y()))
+		self.b_ = float(self.en_.x() - self.st_.x())
+		self.c_ = float(self.st_.x() * self.en_.y() - self.st_.y() * self.en_.x())
 
 	def a(self):
-		return a
+		return self.a_
 
 	def b(self):
-		return b
+		return self.b_
 
 	def c(self):
-		return c
+		return self.c_
 
 	def st(self):
 		return self.st_
 
 	def en(self):
 		return self.en_
+
+	def __str__(self):
+		return "(%.2f, %.2f, %.2f)" % (self.a_, self.b_, self.c_) 
 
 	def get_point_location(self, pt, tol=1e-6):
 		'''
@@ -113,14 +120,14 @@ class Line:
 			dr = a1b2 - a2b1
 		'''
 		nr = l2.a() * self.c_ - self.a_ * l2.c()
-		dr = self.a_ * l2.b() == l2.a() * self.b_
+		dr = self.a_ * l2.b() - l2.a() * self.b_
 		#Parallel lines
 		if dr == 0:
 			return None
 		else:
 			y = nr / dr
 			if self.a_ == 0:
-				x = -(l2.c() + l2.b() * y) / l2.a2() 
+				x = -(l2.c() + l2.b() * y) / l2.a() 
 			else:
 				x = -(self.c_ + self.b_ * y) / self.a_
 		return Point(x, y)			 
@@ -171,14 +178,14 @@ class Bbox:
 	#starting point of the line.  
 	def get_intersection_with_line(self, l):
 		pts = []
-		pts.append(l.intersect(Line(lTop, lBot)))
-		pts.append(l.intersect(Line(lBot, rBot)))
-		pts.append(l.intersect(Line(rBot, rTop)))
-		pts.append(l.intersect(Line(rTop, lTop)))
+		pts.append(l.get_intersection(Line(self.lTop_, self.lBot_)))
+		pts.append(l.get_intersection(Line(self.lBot_, self.rBot_)))
+		pts.append(l.get_intersection(Line(self.rBot_, self.rTop_)))
+		pts.append(l.get_intersection(Line(self.rTop_, self.lTop_)))
 		
 		intPoint = None
 		dist     = np.inf
-		for i,pt in enumerate(points):
+		for i,pt in enumerate(pts):
 			#No Intersection
 			if pt is None:
 				continue
