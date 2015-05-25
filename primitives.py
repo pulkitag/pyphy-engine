@@ -109,6 +109,7 @@ class Wall:
 		self.l2_   = Line(self.lBot_, self.rBot_)
 		self.l3_   = Line(self.rBot_, self.rTop_)
 		self.l4_   = Line(self.rTop_, self.lTop_)
+		self.bbox_ = gm.Bbox(self.lTop_, self.lBot_, self.rBot_, self.rTop_)
 
 	#Imprint the wall
 	def imprint(self, cr, xSz, ySz):
@@ -151,6 +152,14 @@ class Wall:
 		if ((self.l2_.get_point_location(pt) == -1 and self.l4_.get_point_location(pt) == 1) or:
 				 self.l2_.get_point_location(pt) == 0):
 			return gm.Point((0,-1))
+
+	#Check collision with a velocity vector. 
+	def check_collision(self, vel):
+		'''
+			vel: The velocity vector with which some other object is moving
+			Check is this object will collide the wall or not. 
+		'''
+		intersectionPoint, dist = self.bbox_.get_intersection_with_line(vel)
 
 	def name(self):
 		return self.name_
@@ -306,8 +315,8 @@ class Dynamics():
 		     if corners of bbox of obj lie on opposite sides of los then there
 				 will be a collision. 
 	'''
-			
-
+				
+	
 	#Get time to collision
 	def get_time_to_collide(self, obj, name):
 		#The line that represents the motion vector of the object
@@ -316,6 +325,9 @@ class Dynamics():
 		
 		allNames = self.world_.get_object_names()
 		for an in allNames:
+			if an == name:
+				continue
+			self.detect_collision()
 							
 
 #The world
