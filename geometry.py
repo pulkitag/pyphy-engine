@@ -37,6 +37,14 @@ class Point:
 	def dot(self, other):
 		return self.x() * other.x() + self.y() * other.y()
 
+	#Project self on some other point. 
+	def project(self, other):
+		otherUnit = Point.from_self(other)
+		otherUnit.make_unit_norm()
+		projMag  = self.dot(otherUnit)
+		otherUnit.scale(projMag)
+		return otherUnit	
+
 	#Cosine angle between two vectors - assuming their origin to be zero. 
 	def cosine(self, other):
 		pt1 = Point.from_self(self)
@@ -44,6 +52,17 @@ class Point:
 		pt1.make_unit_norm()
 		pt2.make_unit_norm()
 		return pt1.dot(pt2)	
+
+	#Reflect other with self as normal
+	def reflect_normal(self, other):
+		s = Point.from_self(self)
+		s.make_unit_norm()
+		prll = other.project(s)
+		orth = other - prll
+		#Reflect the orthogonal component
+		prll.scale(-1)
+		reflected = prll + orth
+		return reflected
 
 	def __add__(self, other):	
 		p = Point()
@@ -56,6 +75,14 @@ class Point:
 		p.x_ = self.x_ - other.x_
 		p.y_ = self.y_ - other.y_
 		return p
+
+	def __mul__(self, scale):
+		p = Point()
+		p.x_ = self.x_ * scale
+		p.y_ = self.y_ * scale
+		return p
+
+	__rmul__ = __mul__
 
 	def __str__(self):
 		return '(%.2f, %.2f)' % (self.x_, self.y_)
@@ -171,6 +198,11 @@ class Line:
 			return -1
 		else:
 			return 0
+
+	#Get a point along the line
+	def get_point_along_line(self, pt, distance):
+		lDir = self.get_direction()
+		return pt + lDir.scale(distance)
 
 	#Intersection of two lines
 	def get_intersection(self, l2):

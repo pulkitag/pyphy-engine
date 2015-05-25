@@ -5,6 +5,8 @@ import cairo
 import math
 import pdb
 import geometry as gm
+import physics as phy
+import copy
 
 class Color:
 	def __init__(self, r, g, b, a=1.0):
@@ -105,10 +107,10 @@ class Wall:
 		self.lBot_ = self.pos_ + gm.Point(0, self.sz_.y())
 		self.rTop_ = self.pos_ + gm.Point(self.sz_.x(), 0)
 		self.rBot_ = self.pos_ + gm.Point(self.sz_.x(), self.sz_.y())
-		self.l1_   = Line(self.lTop_, self.lBot_) #Left line
-		self.l2_   = Line(self.lBot_, self.rBot_)
-		self.l3_   = Line(self.rBot_, self.rTop_)
-		self.l4_   = Line(self.rTop_, self.lTop_)
+		self.l1_   = gm.Line(self.lTop_, self.lBot_) #Left line
+		self.l2_   = gm.Line(self.lBot_, self.rBot_)
+		self.l3_   = gm.Line(self.rBot_, self.rTop_)
+		self.l4_   = gm.Line(self.rTop_, self.lTop_)
 		self.bbox_ = gm.Bbox(self.lTop_, self.lBot_, self.rBot_, self.rTop_)
 
 	#Imprint the wall
@@ -154,12 +156,12 @@ class Wall:
 			return gm.Point((0,-1))
 
 	#Check collision with a velocity vector. 
-	def check_collision(self, vel):
+	def check_collision(self, headingDir):
 		'''
-			vel: The velocity vector with which some other object is moving
+			headingDir: The headingDirection with which some other object is moving
 			Check is this object will collide the wall or not. 
 		'''
-		intersectionPoint, dist = self.bbox_.get_intersection_with_line(vel)
+		intersectionPoint, dist = self.bbox_.get_intersection_with_line_ray(headingDir)
 
 	def name(self):
 		return self.name_
@@ -230,17 +232,39 @@ class Ball:
 		return self.name_
 
 	def get_position(self):
-		return self.pos_
+		return copy.deepcopy(self.pos_)
+
+	def get_mutable_position(self):
+		return self.pos_	
 	
 	def get_velocity(self):
-		return self.vel_
+		return copy.deepcopy(self.vel_)
+
+	def get_mutable_velocity(self):
+		return self.vel_	
 
 	def set_position(self, pos):
-		self.pos_ = pos
+		self.pos_ = copy.deepcopy(pos)
 
 	def set_velocity(self, vel):
-		self.vel_ = vel
+		self.vel_ = copy.deepcopy(vel)
 
+	#The direction in which the ball is heading with the
+	#center of the ball as starting point of the line 
+	def get_heading_direction_line(self):
+		return gm.Line((self.pos_, self.pos_ + self.vel_))
+
+	#Get point of collision on the point given the point the ball is going to collide on. 
+	def get_point_of_contact(self, pt):
+		'''
+			pt: point to which the ball is going to collide
+		'''
+		headDir = self.get_heading_direction_line()
+		assert headDir.get_point_location(pt)==0, 'The pt of collision and heading direction donot match'
+		#Get the point on the ball which will collide.
+		ptBall  = headDir.get_point_along_line(self.pos_, self.radius_)
+		return ptBall
+		
 
 class Dynamics():
 	def __init__(self, world, g=0, deltaT=0.01):
@@ -268,21 +292,25 @@ class Dynamics():
 	def get_dynamic_object_names(self):
 		return self.world_.get_dynamic_object_names()
 
+	def move_object(self, obj, deltaT):
+		pos = obj.get_mutable_position()
+		vel = obj.get_mutable_velocity()
+		#Update position: s = ut + 0.5at^2
+		pos = pos + deltaT * vel + (0.5 * deltaT * deltaT) * self.g_
+		#Update velocity: v = u + at
+		vel = vel + deltaT * self.g_
+
+	#1 time step
 	def step_object(self, obj, name):
 		if self.isStep_[name]:
 			return
 		if self.tCol_[name] < self.deltaT_:
 			self.resolve_collision(obj, name)
 			return
-		pos = obj.get_position()
-		vel = obj.get_velocity()
-		velMag = vel.mag()
-		#Update position: s = ut + 0.5at^2
-		pos = pos + self.v_.scale(self.deltaT_) + self.g_.scale(0.5 * self.deltaT_ * self.deltaT_)	
-		#Update velocity: v = u + at
-		vel = vel + self.g_.scale(self.deltaT_)
+		oldVel = obj.get_velocity()
+		self.move_object(obj, self.deltaT_)
 		#If a sationary object has been set to motion, then perform resolve_collision
-		if velMag == 0 and vel.mag() > 0:
+		if oldVel.mag() == 0 and (obj.get_velocity()).mag() > 0:
 			self.resolve_collision(obj, name) 
 		self.isStep_[name] = True
 
@@ -306,28 +334,56 @@ class Dynamics():
 			return	
 		#Stationary object just set into motion
 		if self.tCol_[name]==np.inf and vel.mag() > 0:
-			#Detect Collisions
+			self.time_to_collide_all(obj, name)
+			return
 
-	def detect_collision(self, los, obj):
-	'''
-		los: Line of Sight - the direction of velocity vector of object 1
-		obj: The second object.
-		     if corners of bbox of obj lie on opposite sides of los then there
-				 will be a collision. 
-	'''
-				
+		#Resolve an actual collision. 
+		obj2 = self.objCol_[name]
+		if isinstance(obj, 'Ball') and isinstance(obj2, 'Wall'):
+			heading_dir          = obj.get_heading_direction_line()
+			intersectPoint, dist = obj2.check_collision(headingDir)
+			assert intersectPoint is not None, 'intersection point cannot be None'
+			ptBall = obj1.get_point_of_contact(intersectPoint)
+			toc    = phy.time_from_pt1_pt2(ptBall, pt, obj1.get_velocity())
+			assert toc < self.deltaT_, 'Ball should be colliding now, it is not'		
+			#Get normals from the wall
+			#Compute the new velocity
+			#Set the position and new velocity
+			#Move the ball for self.deltaT_ - toc
+	
+		else:
+			raise Exception('Collision type not recognized') 	
+
+
+	def time_to_collide(self, obj1, obj2):
+		'''
+			obj1, obj2: detection collision of object 1 with object 2
+		'''
+		if isinstance(obj1, 'Ball') and isinstance(obj2, 'Wall'):
+			heading_dir          = obj1.get_heading_direction_line()
+			intersectPoint, dist = obj2.check_collision(headingDir)
+			if intersectPoint is not None:
+				ptBall = obj1.get_point_of_contact(intersectPoint)
+				toc    = phy.time_from_pt1_pt2(ptBall, pt, obj1.get_velocity())
+			else:
+				toc = np.inf  	
+		else:
+			raise Exception('Collision type not recognized') 	
+		return toc	
 	
 	#Get time to collision
-	def get_time_to_collide(self, obj, name):
-		#The line that represents the motion vector of the object
-		vel = obj.get_velocity()
-		los = Line(gm.Point(0,0), vel)			
-		
+	def time_to_collide_all(self, obj, name):
+		#Reset toc
+		self.toc_[name]    = np.inf
+		self.objCol_[name] = None
 		allNames = self.world_.get_object_names()
 		for an in allNames:
 			if an == name:
 				continue
-			self.detect_collision()
+			toc = self.time_to_collide(obj, self.world_.get_object(name))
+			if toc < self.toc_[name]:
+				self.toc_[name]    = toc
+				self.objCol_[name] = obj
 							
 
 #The world
