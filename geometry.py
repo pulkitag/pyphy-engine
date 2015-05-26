@@ -1,5 +1,6 @@
 import numpy as np
 import copy
+import pdb
 
 class Point:
 	def __init__(self, x=0, y=0):
@@ -17,6 +18,12 @@ class Point:
 	def y(self):
 		return self.y_
 
+	def x_asint(self):
+		return int(round(self.x_))
+
+	def y_asint(self):
+		return int(round(self.y_))
+
 	def mag(self):
 		return np.sqrt(self.x_ * self.x_ + self.y_ * self.y_)
 
@@ -26,6 +33,12 @@ class Point:
 			self.y_ = xScale * self.y_
 		else:
 			self.y_ = yScale * self.y_
+	
+	def get_scaled_vector(self, scale):
+		other = Point.from_self(self)
+		other.make_unit_norm()
+		other.scale(scale)
+		return other
 
 	#Make a point unit norm
 	def make_unit_norm(self):
@@ -66,14 +79,26 @@ class Point:
 
 	def __add__(self, other):	
 		p = Point()
-		p.x_ = self.x_ + other.x_
-		p.y_ = self.y_ + other.y_
+		if isinstance(other, Point):
+			p.x_ = self.x_ + other.x_
+			p.y_ = self.y_ + other.y_
+		else:
+			uDir = Point.from_self(self)
+			uDir.make_unit_norm()
+			uDir.scale(other)
+			p = self + uDir
 		return p
 
 	def __sub__(self, other):	
 		p = Point()
-		p.x_ = self.x_ - other.x_
-		p.y_ = self.y_ - other.y_
+		if isinstance(other, Point):
+			p.x_ = self.x_ - other.x_
+			p.y_ = self.y_ - other.y_
+		else:
+			uDir = Point.from_self(self)
+			uDir.make_unit_norm()
+			uDir.scale(other)
+			p =  self - uDir
 		return p
 
 	def __mul__(self, scale):
@@ -158,6 +183,12 @@ class Line:
 		pt.make_unit_norm()
 		return pt
 
+	#Returns the outward facing normal
+	def get_normal(self):
+		pt = Point(-self.a(), -self.b())
+		pt.make_unit_norm()
+		return pt	
+
 	def __str__(self):
 		return "(%.2f, %.2f, %.2f)" % (self.a_, self.b_, self.c_) 
 
@@ -202,7 +233,8 @@ class Line:
 	#Get a point along the line
 	def get_point_along_line(self, pt, distance):
 		lDir = self.get_direction()
-		return pt + lDir.scale(distance)
+		lDir.scale(distance)
+		return pt + lDir
 
 	#Intersection of two lines
 	def get_intersection(self, l2):
@@ -264,10 +296,10 @@ class Bbox:
 	def is_point_inside(self, pt):
 		assert len(self.vert_)==4, 'Only works for rectangles'
 		inside=True
-		inside = inside and self.vert_[0].is_quad4(pt)
-		inside = inside and self.vert_[1].is_quad1(pt)
-		inside = inside and self.vert_[2].is_quad2(pt)
-		inside = inside and self.vert_[3].is_quad3(pt)
+		inside = inside and self.vert_[0].is_quad1(pt)
+		inside = inside and self.vert_[1].is_quad4(pt)
+		inside = inside and self.vert_[2].is_quad3(pt)
+		inside = inside and self.vert_[3].is_quad2(pt)
 		return inside
 
 	#Determine if the bbox intersects with los(Line of Sight)

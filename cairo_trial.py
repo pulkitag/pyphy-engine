@@ -1,7 +1,9 @@
 import cairo
 import numpy as np
 import primitives as pm
+import geometry as gm
 import matplotlib.pyplot as plt
+from matplotlib import animation
 
 ##
 #Try to paste a ball at a certain location
@@ -72,8 +74,7 @@ def create_ball_world_gray():
 	return im, world	
 
 
-
-def ball_world_simulation():
+def ball_world_simulation_nophysics():
 	im, world = create_ball_world_gray()
 	plt.ion()
 	for i in range(10):
@@ -81,3 +82,43 @@ def ball_world_simulation():
 		im = world.generate_image()
 		plt.imshow(im)
 		raw_input()	
+
+
+def create_single_ball_world_gray():
+	wThick = 30
+	world = pm.World(xSz=640, ySz=480)
+	bDef  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5))
+
+	xLength, yLength = 550, 400
+	wallHorDef = pm.WallDef(sz=gm.Point(xLength, wThick), fColor=pm.Color(0.5,0.5,0.5))
+	wallVerDef = pm.WallDef(sz=gm.Point(wThick, yLength), fColor=pm.Color(0.5,0.5,0.5))
+
+	xLeft, yTop = 30, 30
+	world.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
+	world.add_object(wallVerDef, initPos=gm.Point(xLeft + xLength -wThick, yTop))
+	#Horizontal Wall
+	world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
+	world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + yLength))
+	world.add_object(bDef, initPos=gm.Point(200,200))
+	im = world.generate_image()	
+	return im, world	
+
+
+def ball_world_step(i, model):
+	model.step()
+	im = model.generate_image()
+	return im
+
+
+def ball_world_simulation(): 
+	plt.ion()
+	plt.figure()
+	_,world = create_single_ball_world_gray()
+	model = pm.Dynamics(world)		
+	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(-500,100))
+	for i in range(100):
+		im = ball_world_step(i, model)
+		plt.imshow(im)
+		a = raw_input()
+		if a=='q':
+			break

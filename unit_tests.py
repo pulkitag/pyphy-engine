@@ -69,9 +69,15 @@ def test_line_ray_bbox_intersection():
 	print "GT: True, Predict:",   bbox.is_intersect_line_ray(l6)
 	print "GT: True,  Predict:",  bbox.is_intersect_line_ray(l5)
 
-
 def test_reflect():
 	pt1 = gm.Point(-2,-1)
 	rx  = (gm.Point(1,0)).reflect_normal(pt1)
 	ry  = (gm.Point(0,1)).reflect_normal(pt1)
 	print rx, ry
+
+def test_point_along_line():
+	pt1 = gm.Point(0,0)
+	pt2 = gm.Point(1,1)
+	l   = gm.Line(pt1, pt2)
+	pt  = l.get_point_along_line(pt2, 3)
+	print pt

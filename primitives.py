@@ -54,16 +54,16 @@ def get_ball_im(radius=40, fColor=Color(0.0, 0.0, 1.0), sThick=2, sColor=None):
 
 
 def get_rectangle_im(sz=gm.Point(4,100), fColor=Color(1.0, 0.0, 0.0)):
-	data    = np.zeros((sz.y(), sz.x(), 4), dtype=np.uint8)
+	data    = np.zeros((sz.y_asint(), sz.x_asint(), 4), dtype=np.uint8)
 	surface = cairo.ImageSurface.create_for_data(data, 
-							cairo.FORMAT_ARGB32, sz.x(), sz.y())
+							cairo.FORMAT_ARGB32, sz.x_asint(), sz.y_asint())
 	cr      = cairo.Context(surface)
 	#Create a transparent source
 	cr.set_source_rgba(1.0, 1.0, 1.0, 0.0)
 	cr.paint()
 	# Make rectangle and fill in the desired color
 	cr.set_source_rgba(fColor.b, fColor.g, fColor.r, fColor.a)
-	cr.rectangle(0, 0, sz.x(), sz.y())
+	cr.rectangle(0, 0, sz.x_asint(), sz.y_asint())
 	cr.fill()
 	#cr.destroy()
 	return cr, data
@@ -83,17 +83,20 @@ class WallDef:
 class Wall:
 	def __init__(self, initPos=gm.Point(0, 0), sz=gm.Point(4, 100), 
 							 fColor=Color(1.0, 0.0, 0.0), name=None):
+		'''
+			initPos: Upper left corner
+		'''
 		self.sz_     = sz
 		self.pos_    = initPos
 		self.fColor_ = fColor
 		self.name_   = name
+		self.make_coordinates()
 		self.make_data()
 
 	@classmethod
 	def from_def(cls, wallDef, name, initPos):
-		self       = cls(sz=wallDef.sz, fColor=wallDef.fColor)
-		self.name_ = name
-		self.pos_  = initPos #The upper left corner
+		self       = cls(sz=wallDef.sz, fColor=wallDef.fColor, 
+										 initPos=initPos, name=name)
 		return self
 
 	#Make cairo data
@@ -126,7 +129,7 @@ class Wall:
 		cr.set_source_surface(surface)		
 		cr.rectangle(x, y, self.sz_.x(), self.sz_.y())
 		cr.fill()
-		print "Wall- x: %d, y: %d, szX: %d, szY: %d" % (x, y, self.sz_.x(), self.sz_.y())
+		#print "Wall- x: %d, y: %d, szX: %d, szY: %d" % (x, y, self.sz_.x(), self.sz_.y())
 
 	#Gives the normal that are needed to solve for collision. 
 	def get_collision_normal(self, pt):
@@ -138,22 +141,22 @@ class Wall:
 		#If the particle is to the left. 
 		if ((self.l1_.get_point_location(pt) == -1 and self.l3_.get_point_location(pt)==1) or
 				 self.l1_.get_point_location(pt) == 0):
-			return gm.Point((-1,0))
+			return self.l1_.get_normal()
 		
 		#If the particle is on the right. 	
 		if ((self.l1_.get_point_location(pt) == 1 and self.l3_.get_point_location(pt) == -1) or
 				 self.l3_.get_point_location(pt) == 0):
-			return gm.Point((1,0))
+			return self.l3_.get_normal()
 
 		#If the particle is on the top
 		if ((self.l2_.get_point_location(pt) == 1 and self.l4_.get_point_location(pt) == -1) or
 				 self.l4_.get_point_location(pt) == 0):
-			return gm.Point((0,1))
+			return self.l4_.get_normal()
 
 		#If the particle is on the bottom
-		if ((self.l2_.get_point_location(pt) == -1 and self.l4_.get_point_location(pt) == 1) or:
+		if ((self.l2_.get_point_location(pt) == -1 and self.l4_.get_point_location(pt) == 1) or
 				 self.l2_.get_point_location(pt) == 0):
-			return gm.Point((0,-1))
+			return self.l2_.get_normal()
 
 	#Check collision with a velocity vector. 
 	def check_collision(self, headingDir):
@@ -162,6 +165,7 @@ class Wall:
 			Check is this object will collide the wall or not. 
 		'''
 		intersectionPoint, dist = self.bbox_.get_intersection_with_line_ray(headingDir)
+		return intersectionPoint, dist
 
 	def name(self):
 		return self.name_
@@ -252,7 +256,11 @@ class Ball:
 	#The direction in which the ball is heading with the
 	#center of the ball as starting point of the line 
 	def get_heading_direction_line(self):
-		return gm.Line((self.pos_, self.pos_ + self.vel_))
+		headDir = self.vel_.get_scaled_vector(self.radius_)
+		#st = self.pos_ + headDir
+		st = self.pos_
+		en = st + self.vel_
+		return gm.Line(st, en)
 
 	#Get point of collision on the point given the point the ball is going to collide on. 
 	def get_point_of_contact(self, pt):
@@ -299,6 +307,9 @@ class Dynamics():
 		pos = pos + deltaT * vel + (0.5 * deltaT * deltaT) * self.g_
 		#Update velocity: v = u + at
 		vel = vel + deltaT * self.g_
+		obj.set_position(pos)
+		obj.set_velocity(vel)
+		print pos, vel
 
 	#1 time step
 	def step_object(self, obj, name):
@@ -309,6 +320,8 @@ class Dynamics():
 			return
 		oldVel = obj.get_velocity()
 		self.move_object(obj, self.deltaT_)
+		self.tCol_[name]   = self.tCol_[name] - self.deltaT_
+		print self.tCol_[name]
 		#If a sationary object has been set to motion, then perform resolve_collision
 		if oldVel.mag() == 0 and (obj.get_velocity()).mag() > 0:
 			self.resolve_collision(obj, name) 
@@ -337,21 +350,36 @@ class Dynamics():
 			self.time_to_collide_all(obj, name)
 			return
 
+		#This can happen when there is intiial velocity provided to the object. 
+		if self.tCol_[name]==0 and self.objCol_[name] is None:
+			self.time_to_collide_all(obj, name)
+			return
+
 		#Resolve an actual collision. 
 		obj2 = self.objCol_[name]
-		if isinstance(obj, 'Ball') and isinstance(obj2, 'Wall'):
-			heading_dir          = obj.get_heading_direction_line()
+		if isinstance(obj, Ball) and isinstance(obj2, Wall):
+			headingDir           = obj.get_heading_direction_line()
 			intersectPoint, dist = obj2.check_collision(headingDir)
 			assert intersectPoint is not None, 'intersection point cannot be None'
-			ptBall = obj1.get_point_of_contact(intersectPoint)
-			toc    = phy.time_from_pt1_pt2(ptBall, pt, obj1.get_velocity())
+			ptBall = obj.get_point_of_contact(intersectPoint)
+			toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj.get_velocity())
 			assert toc < self.deltaT_, 'Ball should be colliding now, it is not'		
 			#Get normals from the wall
+			nrml = obj2.get_collision_normal(intersectPoint)
 			#Compute the new velocity
-			#Set the position and new velocity
+			vel  = nrml.reflect_normal(obj.get_velocity()) 
+			#Set the new position
+			self.move_object(obj, toc)
+			#Set the new velocity
+			obj.set_velocity(vel)
 			#Move the ball for self.deltaT_ - toc
-	
+			self.move_object(obj, self.deltaT_ - toc)
+			self.tCol_[name] = np.inf
+			self.objCol_[name] = None
+			self.resolve_collision(obj, name)
 		else:
+			print "Type obj1:", type(obj)
+			print "Type obj2:", type(obj2)
 			raise Exception('Collision type not recognized') 	
 
 
@@ -359,32 +387,43 @@ class Dynamics():
 		'''
 			obj1, obj2: detection collision of object 1 with object 2
 		'''
-		if isinstance(obj1, 'Ball') and isinstance(obj2, 'Wall'):
-			heading_dir          = obj1.get_heading_direction_line()
+		if isinstance(obj1, Ball) and isinstance(obj2, Wall):
+			headingDir          = obj1.get_heading_direction_line()
 			intersectPoint, dist = obj2.check_collision(headingDir)
+			#pdb.set_trace()
 			if intersectPoint is not None:
 				ptBall = obj1.get_point_of_contact(intersectPoint)
-				toc    = phy.time_from_pt1_pt2(ptBall, pt, obj1.get_velocity())
+				toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj1.get_velocity())
+				#pdb.set_trace()
 			else:
 				toc = np.inf  	
 		else:
-			raise Exception('Collision type not recognized') 	
+			raise Exception('Collision type not recognized')
 		return toc	
 	
 	#Get time to collision
 	def time_to_collide_all(self, obj, name):
 		#Reset toc
-		self.toc_[name]    = np.inf
+		self.tCol_[name]    = np.inf
 		self.objCol_[name] = None
 		allNames = self.world_.get_object_names()
 		for an in allNames:
 			if an == name:
 				continue
-			toc = self.time_to_collide(obj, self.world_.get_object(name))
-			if toc < self.toc_[name]:
-				self.toc_[name]    = toc
-				self.objCol_[name] = obj
-							
+			toc = self.time_to_collide(obj, self.get_object(an))
+			print toc
+			if toc < self.tCol_[name]:
+				self.tCol_[name]   = toc
+				self.objCol_[name] = self.get_object(an)
+		print self.tCol_[name]	
+	
+	#Get the image
+	def generate_image(self):
+		return self.world_.generate_image()
+								
+	#Get the object
+	def get_object(self, name):
+		return self.world_.get_object(name)
 
 #The world
 class World:
