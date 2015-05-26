@@ -73,6 +73,90 @@ def get_rectangle_im(sz=gm.Point(4,100), fColor=Color(1.0, 0.0, 0.0)):
 	return cr, data
 
 
+def get_block_im(blockDir, fColor=Color(1.0, 0.0, 0.0), 
+									sThick=2, bThick=30, sColor=None):
+	'''
+		blockDir: the the direction in which block needs to be created
+	'''
+	stPoint = gm.Point(0,0)
+	enPoint = stPoint + blockDir
+	pts = get_box_coords(stPoint, enPoint, wThick=bThick)
+	pt1, pt2, pt3, pt4 = b
+	#Create the points for drawing the block.
+	mnX   = min(pt1.x(), pt2.x(), pt3.x(), pt4.x())
+	mnY   = min(pt1.y(), pt2.y(), pt3.y(), pt4.y())
+	mnPt  = gm.Point(mnX, mnY)
+	pt1, pt2  = pt1 - mnPt, pt2 - mnPt
+	pt3, pt4  = pt3 - mnPt, pt4 - mnPt	
+	print pt1, pt2, pt3, pt4
+
+	if sColor is None:
+		sColor = fColor
+	xSz   = int(np.ceil(max(pt1.x(), pt2.x(), pt3.x(), pt4.x())))
+	ySz   = int(np.ceil(max(pt1.y(), pt2.y(), pt3.y(), pt4.y())))
+	data    = np.zeros((ySz, xSz, 4), dtype=np.uint8)
+	surface = cairo.ImageSurface.create_for_data(data, 
+							cairo.FORMAT_ARGB32, xSz, ySz)
+	cr      = cairo.Context(surface)
+	#Create a transparent source
+	cr.set_source_rgba(1.0, 1.0, 1.0, 0.0)
+	cr.paint()
+	#Create the border/Mask
+	cr.move_to(pt1.x(), pt1.y())
+	cr.line_to(pt2.x(), pt2.y())
+	cr.line_to(pt3.x(), pt3.y())
+	cr.line_to(pt4.x(), pt4.y())
+	cr.line_to(pt1.x(), pt1.y())
+	cr.set_line_width(sThick)
+	cr.set_source_rgba(sColor.b, sColor.g, sColor.r, sColor.a)
+	cr.stroke()
+	#Fill in the desired color
+	cr.set_source_rgba(fColor.b, fColor.g, fColor.r, fColor.a)
+	cr.move_to(pt1.x(), pt1.y())
+	cr.line_to(pt2.x(), pt2.y())
+	cr.line_to(pt3.x(), pt3.y())
+	cr.line_to(pt4.x(), pt4.y())
+	cr.line_to(pt1.x(), pt1.y())
+	cr.fill()
+	return cr, data
+
+
+def get_box_coords(stPoint, enPoint, wThick=30):
+	'''
+		stPoint: bottom-left point
+		enPoint: The direction along which thickness needs to expanded. 
+		wThick: thickness of the wall
+	'''
+	line = gm.Line(stPoint, enPoint)
+	pDiff = enPoint - stPoint
+	dist  = pDiff.mag()
+	nrml  = line.get_normal()
+	lDir  = line.get_direction()
+	#pt1   = stPoint + (bThick/2.0) * nrml 
+	pt1   = stPoint 
+	pt2   = pt1 + dist * lDir
+	pt3   = pt2 - (wThick * nrml)
+	pt4   = pt3 - (dist * lDir)
+	pts   = [pt1, pt2, pt3, pt4]
+	return pts	
+
+
+#Create a cage
+def create_cage(pts, wThick=30):
+	'''
+		pts: a list of points
+	'''
+	N        = len(pts)
+	bboxs    = []
+	crs, ims = [], []  
+	for i,pt in enumerate(pts):
+		stPoint = pts[i]
+		enPoint = pts[np.mod(i,N)]
+		bPoints = get_box_coords(stPoint, enPoint, wThick=wThick)	
+		bboxs.append(gm.Bbox.from_list(bPoints))
+		cr, im = get_block_im(enPoint-stPoint, bThick=wThick)	
+		
+
 ##
 #Wall def just defines the physical properties. 
 class WallDef:
@@ -81,9 +165,48 @@ class WallDef:
 		self.sz        = sz
 		self.fColor    = fColor
 		self.name      = name
-		
+
+
+class GenericWall:
+	def __init__(self, stPoint, enPoint, fColor=Color(1.0, 0.0, 0.0),
+							 name=None, wThick=4):
+		self.pts_ = get_box_coords(stPoint, enPoint, wThick=wThick)	
+		self.th_  = wThick
+		self.pos_ = self.pts_[-1] #This would be the top-left point
+		self.make_data(stPoint, enPoint)
+		self.bbox_ = gm.Bbox(self.pts_)
+
+	#Make the image data
+	def make_data(self, stPoint, enPoint):
+		cr, im = get_block_im(enPoint - stPoint, bThick=self.th_)	
+		self.data_  = CairoData(cr, im)	
+		self.imSzY_, self.imSzX_ ,_  = im.shape
+
+	#Imprint the data on the canvas	
+	def imprint(self, cr, xSz, ySz):
+		'''
+			xSz, ySz: Size of the canvas on which imprint has to be made. 
+		'''
+		#Create Source
+		y, x  = self.pos_.y(), self.pos_.x()		
+		srcIm = np.zeros((ySz, xSz, 4), dtype=np.uint8)
+		srcIm[y : y + self.imSzY_, x : x + self.imSzX_,:] = self.data_.im[:] 
+		surface = cairo.ImageSurface.create_for_data(srcIm, 
+								cairo.FORMAT_ARGB32, xSz, ySz)
+		cr.set_source_surface(surface)	
+		#Create Mask	
+		cr.move_to(pt1.x(), pt1.y())
+		cr.line_to(pt2.x(), pt2.y())
+		cr.line_to(pt3.x(), pt3.y())
+		cr.line_to(pt4.x(), pt4.y())
+		cr.line_to(pt1.x(), pt1.y())
+		#Fill source into the mask
+		cr.fill()
+
+
 ##
-# Defines the physical properties along with the location etc of the object. 
+# Defines the physical properties along with the location etc of the object.
+# This is a rectangular wall 
 class Wall:
 	def __init__(self, initPos=gm.Point(0, 0), sz=gm.Point(4, 100), 
 							 fColor=Color(1.0, 0.0, 0.0), name=None):
@@ -286,105 +409,6 @@ class Ball:
 		ptBall  = headDir.get_point_along_line(self.pos_, self.radius_)
 		return ptBall
 	
-
-class DataSaver:	
-	def __init__(self, rootPath='/work5/pulkitag/projPhysics', numBalls=1,
-							 mnBallSz=15, mxBallSz=35, seqLen=100, 
-							 mnForce=1e+3, mxForce=1e+6, wThick=30):
-		self.expStr_   = 'nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d_wTh%d' % (numBalls, 
-											mnBallSz, mxBallSz, mnForce, mxForce, seqLen,
-											wThick)
-		self.dirName_  = os.path.join(rootPath, self.expStr_)
-		if not os.path.exists(self.dirName_):
-			os.makedirs(self.dirName_)
-		self.seqDir_   = os.path.join(self.dirName_, 'seq%06d')
-		self.seqLen_   = seqLen
-		self.imFile_   = 'im%06d.jpg'
-		self.dataFile_ = 'data.mat' 
-		self.numBalls_ = numBalls
-		self.bmn_      = mnBallSz
-		self.bmx_      = mxBallSz
-		self.fmn_      = mnForce
-		self.fmx_      = mxForce
-		self.whl_      = 600 #Horizontal wall length
-		self.wvl_      = 600 #Vertical wall length
-		self.xSz_      = 667
-		self.ySz_      = 667
-		self.wth_      = wThick
-		
-	def save(self, numSeq=10):
-		for i in range(numSeq):
-			print i
-			seqDir = self.seqDir_ % i
-			if not os.path.exists(seqDir):
-				os.makedirs(seqDir)
-			dataFile = os.path.join(seqDir, self.dataFile_)
-			imFile   = os.path.join(seqDir, self.imFile_) 
-			self.save_sequence(dataFile, imFile)
-
-	def save_sequence(self, dataFile, imFile):
-		model, fx, fy = self.generate_model()
-		force    = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
-		position = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
-		if self.numBalls_ > 1:
-			raise Exception ('this only works with one ball for now')
-		force[0,0], force[1,0] = fx, fy 
-		for i in range(self.seqLen_):
-			model.step()
-			im = model.generate_image()
-			svImFile = imFile % i
-			scm.imsave(svImFile, im)				
-			for j in range(self.numBalls_):
-				ballName = 'ball-%d' % j
-				ball     = model.get_object(ballName)
-				pos      = ball.get_position()
-				position[2*j,   i] = pos.x()
-				position[2*j+1, i] = pos.y()
-		sio.savemat(dataFile, {'force': force, 'position': position})	
-
-	def generate_model(self):
-		#Get the coordinates of the top point
-		topXmx = self.xSz_ - (self.whl_ + self.wth_)
-		topYmx = self.ySz_ - (self.wvl_ + self.wth_)
-		xLeft = np.floor(np.random.rand() * topXmx)
-		yTop  = np.floor(np.random.rand() * topYmx)	
-		#Create the world
-		world = World(xSz=self.xSz_, ySz=self.ySz_)
-		#Define the walls
-		wallHorDef = WallDef(sz=gm.Point(self.whl_, self.wth_), fColor=Color(0.5,0.5,0.5))
-		wallVerDef = WallDef(sz=gm.Point(self.wth_, self.wvl_), fColor=Color(0.5,0.5,0.5))
-		#Add the walls
-		world.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
-		world.add_object(wallVerDef, initPos=gm.Point(xLeft + self.whl_ - self.wth_, yTop))
-		world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
-		world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + self.wvl_))
-		#Generate ball definitions
-		bDefs = []
-		for i in range(self.numBalls_):
-			r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
-			bDef = BallDef(radius=r, fColor=Color(0.5, 0.5, 0.5))
-			#Find a position to keep the ball
-			xMn  = xLeft + 2 * r + self.wth_
-			yMn  = yTop  + 2 * r + self.wth_
-			xMx  = xLeft + self.whl_ - self.wth_ - 2 * r
-			yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
-			xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
-			yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
-			world.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
-		#Create physics simulation
-		model = Dynamics(world)	
-		#Apply initial forces to balls
-		for i in range(self.numBalls_):
-			ballName = 'ball-%d' % i
-			fx = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
-			fy = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
-			if np.random.rand() > 0.5:
-				fx = -fx
-			if np.random.rand() > 0.5:
-				fy = -fy
-			f  = gm.Point(fx, fy)
-			model.apply_force(ballName, f, forceT=1.0) 
-		return model, fx, fy
 
 	
 class Dynamics:
@@ -668,10 +692,15 @@ class World:
 		return self.objects_[name]
 
 	##
-	def get_object_name_type(self, objDef, initPos):
+	def get_object_name_type(self, objDef, initPos=None):
 		if isinstance(objDef, WallDef):
 			name    = 'wall-%d' % self.count_['wall']
 			obj     = Wall.from_def(objDef, name, initPos)
+			objType = 'static' 
+			self.count_['wall'] += 1
+		elif isinstance(objDef, GenericWall):
+			name    = 'wall-%d' % self.count_['wall']
+			obj     = copy.deepcopy(objDef)
 			objType = 'static' 
 			self.count_['wall'] += 1
 		elif isinstance(objDef, BallDef):

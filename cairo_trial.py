@@ -52,6 +52,11 @@ def create_ball_world():
 	im = world.generate_image()	
 	return im, world	
 
+
+def create_world_diamond():
+	world = pm.World(xSz=640, ySz=480)
+	
+
 def create_ball_world_gray():
 	wThick = 30
 	world = pm.World(xSz=640, ySz=480)

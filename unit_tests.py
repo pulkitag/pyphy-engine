@@ -105,5 +105,10 @@ def test_pseudo_tangent_contact():
 	iPt2   = circle.get_contact_point_pseudo_tangent(l2)
 	print "GT: (-20,0), Predict: ", iPt1
 	print "GT: (20,0), Predict: ", iPt2
-
+	#A diagonal
+	pt1 = gm.Point(50,0)
+	pt2 = gm.Point(0,50)
+	l1     = gm.Line(pt1, pt2)
+	iPt1   = circle.get_contact_point_pseudo_tangent(l1)
+	print iPt1	
 	

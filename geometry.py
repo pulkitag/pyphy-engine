@@ -326,6 +326,13 @@ class Bbox:
 		#self.l3_   = Line(rBot, rTop)
 		#self.l4_   = Line(rTop, lTop)
 
+	@classmethod
+	def from_list(cls, pts):
+		self = cls()
+		self.vert_ = copy.deepcopy(pts)
+		self.N_    = len(self.vert_)
+		return self
+
 	#offset the bbox
 	def move(self, offset):
 		for i, vertex in enumerate(self.vert_):
@@ -361,7 +368,7 @@ class Bbox:
 			return False		
 	
 	#Find closest point
-	def find_closest_interior_point(self, srcPt, pts):
+	def find_closest_interior_point(self, srcPt, pts, getIndex=False):
 		'''
 			from a list of Points (pts), find the point that is closest 
 			to srcPt and is inside the Bbox
@@ -369,6 +376,7 @@ class Bbox:
 		'''
 		intPoint = None
 		dist     = np.inf
+		idx      = None
 		for i,pt in enumerate(pts):
 			#No Intersection
 			if pt is None:
@@ -380,7 +388,12 @@ class Bbox:
 			if distTmp  < dist:
 				intPoint = pt
 				dist     = distTmp
-		return intPoint, dist
+				idx      = i
+
+		if getIndex:
+			return intPoint, dist, idx
+		else:
+			return intPoint, dist
 
 	#Point of intersection which is closest to the 
 	#starting point of the line. 
@@ -390,10 +403,18 @@ class Bbox:
 			If a line intersects, it is not necessary that a line segment will
 			also intersect. 
 		'''
-		pts = []
+		pts      = []
+		boxLines = []
 		for i,v in enumerate(self.vert_):
-			pts.append(l.get_intersection(Line(v, self.vert_[np.mod(i+1, self.N_)])))
-		return self.find_closest_interior_point(l.st(), pts)				
+			boxLine = Line(v, self.vert_[np.mod(i+1, self.N_)])
+			pts.append(l.get_intersection(boxLine))
+			boxLines.append(boxLine)
+		intPoint, dist, idx = self.find_closest_interior_point(l.st(), pts, getIndex=True)
+		return intPoint, dist				
+
+	#Find which line is intersected first by the ray
+	def get_line_of_first_intersection_with_ray(self, l):
+		pass
 	
 	#Point of intersection which is closest to the 
 	#starting point of the line ray. 
