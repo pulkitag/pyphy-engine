@@ -8,6 +8,9 @@ import geometry as gm
 import physics as phy
 import copy
 from collections import deque
+import os
+import scipy.io as sio
+import scipy.misc as scm
 
 class Color:
 	def __init__(self, r, g, b, a=1.0):
@@ -227,7 +230,7 @@ class Ball:
 	#Imprint the ball
 	def imprint(self, cr, xSz, ySz):
 		#Get the position of bottom left corner.
-		y, x  = self.pos_.y() - self.yOff_, self.pos_.x() - self.xOff_		
+		y, x  = self.pos_.y_asint() - self.yOff_, self.pos_.x_asint() - self.xOff_		
 		srcIm = np.zeros((ySz, xSz, 4), dtype=np.uint8)
 		srcIm[y:y+self.ySz_, x:x+self.xSz_,:] = self.data_.im[:] 
 		surface = cairo.ImageSurface.create_for_data(srcIm, 
@@ -282,9 +285,109 @@ class Ball:
 		#Get the point on the ball which will collide.
 		ptBall  = headDir.get_point_along_line(self.pos_, self.radius_)
 		return ptBall
-		
+	
 
-class Dynamics():
+class DataSaver:	
+	def __init__(self, rootPath='/work5/pulkitag/projPhysics', numBalls=1,
+							 mnBallSz=15, mxBallSz=35, seqLen=100, 
+							 mnForce=1e+3, mxForce=1e+6, wThick=30):
+		self.expStr_   = 'nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d_wTh%d' % (numBalls, 
+											mnBallSz, mxBallSz, mnForce, mxForce, seqLen,
+											wThick)
+		self.dirName_  = os.path.join(rootPath, self.expStr_)
+		if not os.path.exists(self.dirName_):
+			os.makedirs(self.dirName_)
+		self.seqDir_   = os.path.join(self.dirName_, 'seq%06d')
+		self.seqLen_   = seqLen
+		self.imFile_   = 'im%06d.jpg'
+		self.dataFile_ = 'data.mat' 
+		self.numBalls_ = numBalls
+		self.bmn_      = mnBallSz
+		self.bmx_      = mxBallSz
+		self.fmn_      = mnForce
+		self.fmx_      = mxForce
+		self.whl_      = 600 #Horizontal wall length
+		self.wvl_      = 600 #Vertical wall length
+		self.xSz_      = 667
+		self.ySz_      = 667
+		self.wth_      = wThick
+		
+	def save(self, numSeq=10):
+		for i in range(numSeq):
+			print i
+			seqDir = self.seqDir_ % i
+			if not os.path.exists(seqDir):
+				os.makedirs(seqDir)
+			dataFile = os.path.join(seqDir, self.dataFile_)
+			imFile   = os.path.join(seqDir, self.imFile_) 
+			self.save_sequence(dataFile, imFile)
+
+	def save_sequence(self, dataFile, imFile):
+		model, fx, fy = self.generate_model()
+		force    = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
+		position = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
+		if self.numBalls_ > 1:
+			raise Exception ('this only works with one ball for now')
+		force[0,0], force[1,0] = fx, fy 
+		for i in range(self.seqLen_):
+			model.step()
+			im = model.generate_image()
+			svImFile = imFile % i
+			scm.imsave(svImFile, im)				
+			for j in range(self.numBalls_):
+				ballName = 'ball-%d' % j
+				ball     = model.get_object(ballName)
+				pos      = ball.get_position()
+				position[2*j,   i] = pos.x()
+				position[2*j+1, i] = pos.y()
+		sio.savemat(dataFile, {'force': force, 'position': position})	
+
+	def generate_model(self):
+		#Get the coordinates of the top point
+		topXmx = self.xSz_ - (self.whl_ + self.wth_)
+		topYmx = self.ySz_ - (self.wvl_ + self.wth_)
+		xLeft = np.floor(np.random.rand() * topXmx)
+		yTop  = np.floor(np.random.rand() * topYmx)	
+		#Create the world
+		world = World(xSz=self.xSz_, ySz=self.ySz_)
+		#Define the walls
+		wallHorDef = WallDef(sz=gm.Point(self.whl_, self.wth_), fColor=Color(0.5,0.5,0.5))
+		wallVerDef = WallDef(sz=gm.Point(self.wth_, self.wvl_), fColor=Color(0.5,0.5,0.5))
+		#Add the walls
+		world.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
+		world.add_object(wallVerDef, initPos=gm.Point(xLeft + self.whl_ - self.wth_, yTop))
+		world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
+		world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + self.wvl_))
+		#Generate ball definitions
+		bDefs = []
+		for i in range(self.numBalls_):
+			r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
+			bDef = BallDef(radius=r, fColor=Color(0.5, 0.5, 0.5))
+			#Find a position to keep the ball
+			xMn  = xLeft + 2 * r + self.wth_
+			yMn  = yTop  + 2 * r + self.wth_
+			xMx  = xLeft + self.whl_ - self.wth_ - 2 * r
+			yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
+			xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
+			yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
+			world.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
+		#Create physics simulation
+		model = Dynamics(world)	
+		#Apply initial forces to balls
+		for i in range(self.numBalls_):
+			ballName = 'ball-%d' % i
+			fx = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
+			fy = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
+			if np.random.rand() > 0.5:
+				fx = -fx
+			if np.random.rand() > 0.5:
+				fy = -fy
+			f  = gm.Point(fx, fy)
+			model.apply_force(ballName, f, forceT=1.0) 
+		return model, fx, fy
+
+	
+class Dynamics:
 	def __init__(self, world, g=0, deltaT=0.01):
 		'''
 			g: gravity, since the (0,0) is top left, gravity will be positive. 
@@ -319,7 +422,7 @@ class Dynamics():
 		vel = vel + deltaT * self.g_
 		obj.set_position(pos)
 		obj.set_velocity(vel)
-		print pos, vel
+		#print pos, vel
 
 	#1 time step
 	def step_object(self, obj, name):
@@ -331,7 +434,7 @@ class Dynamics():
 		oldVel = obj.get_velocity()
 		self.move_object(obj, self.deltaT_)
 		self.tCol_[name]   = self.tCol_[name] - self.deltaT_
-		print self.tCol_[name]
+		#print self.tCol_[name]
 		#If a sationary object has been set to motion, then perform resolve_collision
 		if oldVel.mag() == 0 and (obj.get_velocity()).mag() > 0:
 			self.resolve_collision(obj, name) 
@@ -364,7 +467,9 @@ class Dynamics():
 			self.step_object(self.world_.get_object(name), name)
 		 
 	#Resolve the collisions
-	def resolve_collision(self, obj, name):
+	def resolve_collision(self, obj, name, deltaT=None):
+		if deltaT is None:
+			deltaT = self.deltaT_
 		pos = obj.get_position()
 		vel = obj.get_velocity()
 		#Stationary object
@@ -386,29 +491,37 @@ class Dynamics():
 		obj2 = self.objCol_[name]
 		if isinstance(obj, Ball) and isinstance(obj2, Wall):
 			#Move the object to the position of collision
-			assert self.tCol_[name] <= self.deltaT_
-			extraT = self.deltaT_ - self.tCol_[name]	
+			assert self.tCol_[name] <= deltaT
+			extraT = deltaT - self.tCol_[name]	
 			self.move_object(obj, self.tCol_[name])
 			self.tCol_[name] = 0
 
 			headingDir           = obj.get_heading_direction_line()
 			intersectPoint, dist = obj2.check_collision(headingDir)
+			if intersectPoint is None:
+				pdb.set_trace()
 			assert intersectPoint is not None, 'intersection point cannot be None'
 			ptBall = obj.get_point_of_contact(intersectPoint)
 			toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj.get_velocity())
-			assert toc < self.deltaT_, 'Ball should be colliding now, it is not'		
-			print toc
+			assert toc < deltaT, 'Ball should be colliding now, it is not'		
+			#print toc
 			#Get normals from the wall
 			nrml = obj2.get_collision_normal(intersectPoint)
 			#Compute the new velocity
 			vel  = nrml.reflect_normal(obj.get_velocity()) 
 			#Set the new velocity
 			obj.set_velocity(vel)
+			#Check for iminent collisions
+			self.time_to_collide_all(obj, name)
+			if self.tCol_[name] > extraT:
+				self.move_object(obj, extraT)
+			else:
+				self.resolve_collision(obj, name, deltaT=extraT)			
 			#Move the ball for extraT
-			self.move_object(obj, extraT)
-			self.tCol_[name] = np.inf
-			self.objCol_[name] = None
-			self.resolve_collision(obj, name)
+			#self.move_object(obj, extraT)
+			#self.tCol_[name] = np.inf
+			#self.objCol_[name] = None
+			#self.resolve_collision(obj, name)
 		else:
 			print "Type obj1:", type(obj)
 			print "Type obj2:", type(obj2)
@@ -443,11 +556,11 @@ class Dynamics():
 			if an == name:
 				continue
 			toc = self.time_to_collide(obj, self.get_object(an))
-			print toc
+			#print toc
 			if toc < self.tCol_[name]:
 				self.tCol_[name]   = toc
 				self.objCol_[name] = self.get_object(an)
-		print self.tCol_[name]	
+		#print self.tCol_[name]	
 	
 	#Get the image
 	def generate_image(self):

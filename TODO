@@ -2,3 +2,9 @@
 2. Donot crash if ball goes out
 3. Allow arbitray wall configuration
 4. Allow 2 Balls
+
+#Why one ball goes inside the other?
+A: Because, the intersection point is measured along the heading direction, but when a "finite" size ball   collides with a surface it is not the point along the heading direction on the ball that collides 
+	 first, but the point that touches the wall first. For, eg if the ball is moving diagonally towards
+	 the bottom wall, then the lowermost point of the ball will first collide the surface! My code
+	 doesnot account for this.  

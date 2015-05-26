@@ -156,6 +156,11 @@ class Line:
 		self.a_ = float(-(self.en_.y() - self.st_.y()))
 		self.b_ = float(self.en_.x() - self.st_.x())
 		self.c_ = float(self.st_.x() * self.en_.y() - self.st_.y() * self.en_.x())
+		aMag = np.abs(self.a_)
+		if aMag > 0:
+			self.a_ = self.a_ / aMag
+			self.b_ = self.b_ / aMag
+			self.c_ = self.c_ / aMag
 
 	def a(self):
 		return copy.deepcopy(self.a_)
@@ -268,7 +273,40 @@ class Line:
 			if relLoc != 1:
 				pt = None
 		return pt
-						
+					
+
+##
+#Circle
+class Circle:
+	def __init__(self, radius=20, center=Point(0,0)):
+		self.r_ = radius
+		self.c_ = center		
+
+	#Given a line l, find the line parallel to l
+	#that is tangent to the circle and find the 
+	#point of contact of this line with the circl
+	def get_contact_point_pseudo_tangent(self, l):
+		#Get the direction of the line from l to the center of the circle
+		lToCDir = l.get_normal()	 
+		#Scale to the radius
+		lToCDir.scale(self.r_)
+		#Get point of contact
+		pt = self.c_ + lToCDir
+		#Get equation of radius
+		lr = Line(self.c_, pt)
+		#Find if this line ray intersects the original line
+		intersectPoint = l.get_intersection_ray(lr)
+		if intersectPoint is not None:
+			return pt
+		else:
+			#The point could be on the opposite direction
+			lToCDir.scale(-1.0)
+			pt = self.c_ + lToCDir
+			lr = Line(self.c_, pt)
+			intersectPoint = l.get_intersection_ray(lr)
+			assert intersectPoint is not None
+			return pt
+
 ##
 # Note this not specifically a rectangular BBox. It can be in general be 
 # of any shape. 

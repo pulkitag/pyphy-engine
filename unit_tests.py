@@ -81,3 +81,29 @@ def test_point_along_line():
 	l   = gm.Line(pt1, pt2)
 	pt  = l.get_point_along_line(pt2, 3)
 	print pt
+
+
+def test_pseudo_tangent_contact():
+	circle = gm.Circle(radius=20, center=gm.Point(0,0))
+	#Parallel to x-axis
+	pt1    = gm.Point(-1,25)
+	pt2    = gm.Point(1,25)
+	l1     = gm.Line(pt1, pt2)
+	l2     = gm.Line(pt2, pt1)
+	iPt1   = circle.get_contact_point_pseudo_tangent(l1)
+	iPt2   = circle.get_contact_point_pseudo_tangent(l2)
+	print "GT: (0,20), Predict: ", iPt1
+	print "GT: (0,20), Predict: ", iPt2
+	#Parallel to y-axis
+	pt1    = gm.Point(-25,5)
+	pt2    = gm.Point(-25,50)
+	pt3    = gm.Point(30,5)
+	pt4    = gm.Point(30,50)
+	l1     = gm.Line(pt1, pt2)
+	l2     = gm.Line(pt3, pt4)
+	iPt1   = circle.get_contact_point_pseudo_tangent(l1)
+	iPt2   = circle.get_contact_point_pseudo_tangent(l2)
+	print "GT: (-20,0), Predict: ", iPt1
+	print "GT: (20,0), Predict: ", iPt2
+
+	
