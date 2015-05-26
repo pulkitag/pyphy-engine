@@ -385,7 +385,11 @@ class Dynamics():
 		#Resolve an actual collision. 
 		obj2 = self.objCol_[name]
 		if isinstance(obj, Ball) and isinstance(obj2, Wall):
-		
+			#Move the object to the position of collision
+			assert self.tCol_[name] <= self.deltaT_
+			extraT = self.deltaT_ - self.tCol_[name]	
+			self.move_object(obj, self.tCol_[name])
+			self.tCol_[name] = 0
 
 			headingDir           = obj.get_heading_direction_line()
 			intersectPoint, dist = obj2.check_collision(headingDir)
@@ -393,16 +397,15 @@ class Dynamics():
 			ptBall = obj.get_point_of_contact(intersectPoint)
 			toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj.get_velocity())
 			assert toc < self.deltaT_, 'Ball should be colliding now, it is not'		
+			print toc
 			#Get normals from the wall
 			nrml = obj2.get_collision_normal(intersectPoint)
 			#Compute the new velocity
 			vel  = nrml.reflect_normal(obj.get_velocity()) 
-			#Set the new position
-			self.move_object(obj, toc)
 			#Set the new velocity
 			obj.set_velocity(vel)
-			#Move the ball for self.deltaT_ - toc
-			self.move_object(obj, self.deltaT_ - toc)
+			#Move the ball for extraT
+			self.move_object(obj, extraT)
 			self.tCol_[name] = np.inf
 			self.objCol_[name] = None
 			self.resolve_collision(obj, name)
