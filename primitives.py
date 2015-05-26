@@ -7,6 +7,7 @@ import pdb
 import geometry as gm
 import physics as phy
 import copy
+from collections import deque
 
 class Color:
 	def __init__(self, r, g, b, a=1.0):
@@ -176,20 +177,21 @@ class Wall:
 class BallDef:
 	def __init__(self, radius=20, sThick=2, 
 							 sColor=Color(0.0, 0.0, 0.0), fColor=Color(1.0, 0.0, 0.0),
-							 name=None):
+							 name=None, density=1.0):
 		self.radius    = radius
 		self.sThick    = sThick
 		self.sColor    = sColor
 		self.fColor    = fColor
 		self.name      = name
-
+		self.density   = density
 		
 ##
 # Defines the physical properties along with the location etc of the object. 
 class Ball:
 	def __init__(self, radius=20, sThick=2, 
 							 sColor=Color(0.0, 0.0, 0.0), fColor=Color(1.0, 0.0, 0.0),
-							 name=None, initPos=gm.Point(0,0), initVel=gm.Point(0,0)):
+							 name=None, initPos=gm.Point(0,0), initVel=gm.Point(0,0),
+							 density=1.0):
 		self.radius_    = radius
 		self.sThick_    = sThick
 		self.sColor_    = sColor
@@ -198,6 +200,8 @@ class Ball:
 		self.pos_       = initPos
 		self.tCol_      = 0
 		self.vel_       = initVel
+		self.density_   = density
+		self.mass_      = (4/3.0) * np.pi * np.power(self.radius_/10.0,3) * density
 		self.make_data()
 
 	@classmethod
@@ -252,6 +256,12 @@ class Ball:
 
 	def set_velocity(self, vel):
 		self.vel_ = copy.deepcopy(vel)
+
+	def get_mass(self):
+		return self.mass_
+
+	def set_mass(self, mass):
+		self.mass_ = mass
 
 	#The direction in which the ball is heading with the
 	#center of the ball as starting point of the line 
@@ -327,6 +337,23 @@ class Dynamics():
 			self.resolve_collision(obj, name) 
 		self.isStep_[name] = True
 
+	#Apply force on an object
+	def apply_force(self, objName, force, forceT=None):
+		'''
+			forceT: amount of time for which force is applied. 
+		'''
+		if forceT is None:
+			forceT = self.deltaT_
+		obj  = self.get_object(objName)
+		mass = obj.get_mass()
+		assert mass > 0, "Mass has to be a positive number"
+		a      = gm.Point.from_self(force)
+		a.scale(1.0/mass) 
+		deltaV = 0.5 * forceT * forceT * a
+		vel    = obj.get_velocity()
+		vel    = vel + deltaV
+		obj.set_velocity(vel)	 
+
 	#Step the entire world
 	def step(self):
 		#Reset step states
@@ -343,7 +370,7 @@ class Dynamics():
 		#Stationary object
 		if vel.mag() == 0:
 			self.tCol_[name] = np.inf
-			self.step_object(self, obj, name)
+			self.step_object(obj, name)
 			return	
 		#Stationary object just set into motion
 		if self.tCol_[name]==np.inf and vel.mag() > 0:
@@ -358,6 +385,8 @@ class Dynamics():
 		#Resolve an actual collision. 
 		obj2 = self.objCol_[name]
 		if isinstance(obj, Ball) and isinstance(obj2, Wall):
+		
+
 			headingDir           = obj.get_heading_direction_line()
 			intersectPoint, dist = obj2.check_collision(headingDir)
 			assert intersectPoint is not None, 'intersection point cannot be None'
@@ -405,7 +434,7 @@ class Dynamics():
 	def time_to_collide_all(self, obj, name):
 		#Reset toc
 		self.tCol_[name]    = np.inf
-		self.objCol_[name] = None
+		self.objCol_[name]  = None
 		allNames = self.world_.get_object_names()
 		for an in allNames:
 			if an == name:
@@ -424,6 +453,62 @@ class Dynamics():
 	#Get the object
 	def get_object(self, name):
 		return self.world_.get_object(name)
+
+	#Get the dynamic object
+	def get_dynamic_object_names(self):
+		return self.world_.get_dynamic_object_names()
+
+	#Get object position
+	def get_object_position(self, name):
+		return self.world_.get_object_position(name)
+
+
+#This is useful if one needs to have a lookahead. 
+class DynamicsHorizon:
+	def __init__(self, model, lookAhead=20):
+		self.N_     = lookAhead
+		self.model_ = model
+		self.names_ = model.get_dynamic_object_names()
+		#Stores the positions of the dynamic objects 
+		self.pos_ = co.OrderedDict()
+		for name in self.names_:
+			self.pos_[name] = deque()
+		#Store the images
+		self.im_   = deque()
+		#Store the temporary positions and image
+		self.tmpPos_ = co.OrderedDict()
+		self.tmpIm_  = None
+		#Output matrix for positions
+		self.outMat_ = np.zeros((len(self.names_), self.N_ * 2)).astype(np.float32)
+		for i in range(lookAhead):
+			im = self.step()
+			self.im_.append(im)
+			for name in self.names_:
+				self.pos_[name].append(self.tmpPos_[name])
+
+	#
+	def step(self):
+		self.model_.step()
+		for name in self.names_:
+			self.tmpPos_[name] = self.model_.get_object_position(name)
+		self.tmpIm_ = self.model_.generate_image()	
+				
+	#
+	def get_data(self):
+		self.step()
+		#Get the image
+		im = self.im_.popleft()
+		self.im_.append(self.tmpIm_)	
+		#Get the velocities on the ball on the horizon
+		for i, name in enumerate(self.names_):
+			self.pos_[name].append(self.tmpPos_[name])
+			for n in range(self.N_):
+				vel = self.pos_[name][i+1] - self.pos_[name][i]
+				self.outMat_[i, n*2] = np.float32(vel.x())
+				self.outMat_[i, n*2 + 1] = np.float32(vel.y())
+			_ = self.pos_[name].popleft() 
+		return copy.deepcopy(im), copy.deepcopy(self.outMat_)
+
 
 #The world
 class World:
@@ -497,7 +582,12 @@ class World:
 			self.static_[name]  = obj
 		else:
 			self.dynamic_[name] = obj		
+
+	#
+	def get_object_position(self, objName):
+		return self.objects_[objName].get_position()
 	
+	#
 	def set_object_position(self, objName, newPos):
 		assert objName in self.dynamic_.keys()
 		self.dynamic_[objName].set_position(newPos)

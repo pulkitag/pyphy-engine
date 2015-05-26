@@ -109,7 +109,8 @@ def ball_world_step(i, model):
 	im = model.generate_image()
 	return im
 
-
+##
+# Create a physics simulation of one ball hitting the walls. 
 def ball_world_simulation(): 
 	plt.ion()
 	plt.figure()
@@ -122,3 +123,14 @@ def ball_world_simulation():
 		a = raw_input()
 		if a=='q':
 			break
+
+##
+# Get the data for some horizon
+def get_horizon_data():
+	_,world = create_single_ball_world_gray()
+	model   = pm.Dynamics(world)
+	model.apply_force('ball-0', gm.Point(-5000, 1000), forceT=1.0)
+	hor     = pm.DynamicsHorizon(model, lookAhead=5)
+	for i in range(20):
+		im, outMat = hor.get_data()
+		print outMat
