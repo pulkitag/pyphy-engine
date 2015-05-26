@@ -116,7 +116,7 @@ def ball_world_simulation():
 	plt.figure()
 	_,world = create_single_ball_world_gray()
 	model = pm.Dynamics(world)		
-	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(-500,0))
+	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(1000,1000))
 	for i in range(100):
 		im = ball_world_step(i, model)
 		plt.imshow(im)
@@ -129,7 +129,7 @@ def ball_world_simulation():
 def get_horizon_data():
 	_,world = create_single_ball_world_gray()
 	model   = pm.Dynamics(world)
-	model.apply_force('ball-0', gm.Point(-5000, 1000), forceT=1.0)
+	model.apply_force('ball-0', gm.Point(-50000, 10000), forceT=1.0)
 	hor     = pm.DynamicsHorizon(model, lookAhead=5)
 	for i in range(20):
 		im, outMat = hor.get_data()

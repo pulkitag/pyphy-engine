@@ -282,6 +282,7 @@ class Bbox:
 		self.vert_.append(lBot)
 		self.vert_.append(rBot)
 		self.vert_.append(rTop)
+		self.N_ = len(self.vert_)
 		#self.l1_   = Line(lTop, lBot)
 		#self.l2_   = Line(lBot, rBot)
 		#self.l3_   = Line(rBot, rTop)
@@ -352,8 +353,8 @@ class Bbox:
 			also intersect. 
 		'''
 		pts = []
-		for i,v in enumerate(self.vert_[0:-1]):
-			pts.append(l.get_intersection(Line(v, self.vert_[i+1])))
+		for i,v in enumerate(self.vert_):
+			pts.append(l.get_intersection(Line(v, self.vert_[np.mod(i+1, self.N_)])))
 		return self.find_closest_interior_point(l.st(), pts)				
 	
 	#Point of intersection which is closest to the 
@@ -363,8 +364,8 @@ class Bbox:
 			Note this function considers l as a line ray and not as line segment/line
 		'''
 		pts = []
-		for i,v in enumerate(self.vert_[0:-1]):
-			pts.append(Line(v, self.vert_[i+1]).get_intersection_ray(l))
+		for i,v in enumerate(self.vert_):
+			pts.append(Line(v, self.vert_[np.mod(i+1, self.N_)]).get_intersection_ray(l))
 		return self.find_closest_interior_point(l.st(), pts)				
 	
 	#Get time of collision with another bounding box. 
