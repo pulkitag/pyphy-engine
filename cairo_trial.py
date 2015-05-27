@@ -101,7 +101,7 @@ def ball_world_simulation_nophysics():
 def create_single_ball_world_gray():
 	wThick = 30
 	world = pm.World(xSz=640, ySz=480)
-	bDef  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5))
+	bDef  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5), radius=50)
 
 	xLength, yLength = 550, 400
 	wallHorDef = pm.WallDef(sz=gm.Point(xLength, wThick), fColor=pm.Color(0.5,0.5,0.5))

@@ -461,7 +461,7 @@ class Dynamics:
 	def get_dynamic_object_names(self):
 		return self.world_.get_dynamic_object_names()
 
-	def move_object(self, obj, deltaT):
+	def move_object(self, obj, deltaT, name):
 		pos = obj.get_mutable_position()
 		vel = obj.get_mutable_velocity()
 		#Update position: s = ut + 0.5at^2
@@ -470,6 +470,7 @@ class Dynamics:
 		vel = vel + deltaT * self.g_
 		obj.set_position(pos)
 		obj.set_velocity(vel)
+		self.tCol_[name] = self.tCol_[name] - self.deltaT_
 		#print pos, vel
 
 	#1 time step
@@ -480,8 +481,8 @@ class Dynamics:
 			self.resolve_collision(obj, name)
 			return
 		oldVel = obj.get_velocity()
-		self.move_object(obj, self.deltaT_)
-		self.tCol_[name]   = self.tCol_[name] - self.deltaT_
+		self.move_object(obj, self.deltaT_, name)
+		#self.tCol_[name]   = self.tCol_[name] - self.deltaT_
 		#print self.tCol_[name]
 		#If a sationary object has been set to motion, then perform resolve_collision
 		if oldVel.mag() == 0 and (obj.get_velocity()).mag() > 0:
@@ -541,8 +542,8 @@ class Dynamics:
 			#Move the object to the position of collision
 			assert self.tCol_[name] <= deltaT
 			extraT = deltaT - self.tCol_[name]	
-			self.move_object(obj, self.tCol_[name])
-			self.tCol_[name] = 0
+			self.move_object(obj, self.tCol_[name], name)
+			#self.tCol_[name] = 0
 
 			'''
 			headingDir           = obj.get_heading_direction_line()
@@ -565,7 +566,7 @@ class Dynamics:
 			#Check for iminent collisions
 			self.time_to_collide_all(obj, name)
 			if self.tCol_[name] > extraT:
-				self.move_object(obj, extraT)
+				self.move_object(obj, extraT, name)
 			else:
 				self.resolve_collision(obj, name, deltaT=extraT)			
 			#Move the ball for extraT

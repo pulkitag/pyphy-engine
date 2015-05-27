@@ -247,6 +247,17 @@ class Line:
 		else:
 			return 0
 
+	#Determines if the point lies on the line segment
+	def is_on_segment(self, pt, tol=1e-06):
+		d1 = self.st_.distance(pt)
+		d2 = self.en_.distance(pt)
+		d3 = self.st_.distance(self.en_)
+		dSum = d1 + d2
+		if (dSum <= d3 + tol) and (dSum >= d3 - tol):
+			return True
+		else:
+			return False		
+
 	#Get a point along the line
 	def get_point_along_line(self, pt, distance):
 		lDir = self.get_direction()

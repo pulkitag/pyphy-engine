@@ -78,8 +78,8 @@ class DataSaver:
 		#Create the world
 		world = pm.World(xSz=self.xSz_, ySz=self.ySz_)
 		#Define the walls
-		wallHorDef = pm.WallDef(sz=gm.Point(self.whl_, self.wth_), fColor=Color(0.5,0.5,0.5))
-		wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, self.wvl_), fColor=Color(0.5,0.5,0.5))
+		wallHorDef = pm.WallDef(sz=gm.Point(self.whl_, self.wth_), fColor=pm.Color(0.5,0.5,0.5))
+		wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, self.wvl_), fColor=pm.Color(0.5,0.5,0.5))
 		#Add the walls
 		world.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
 		world.add_object(wallVerDef, initPos=gm.Point(xLeft + self.whl_ - self.wth_, yTop))
@@ -89,7 +89,7 @@ class DataSaver:
 		bDefs = []
 		for i in range(self.numBalls_):
 			r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
-			bDef = pm.BallDef(radius=r, fColor=Color(0.5, 0.5, 0.5))
+			bDef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
 			#Find a position to keep the ball
 			xMn  = xLeft + 2 * r + self.wth_
 			yMn  = yTop  + 2 * r + self.wth_
