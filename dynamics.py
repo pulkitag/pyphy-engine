@@ -29,11 +29,18 @@ def get_toc_ball_wall(obj1, obj2):
 		ray = gm.Line(pos, pos + nrml)
 		intPoint = l.get_intersection_ray(ray)
 		assert intPoint is not None, "Intersection point cannot be none"
-		dist     = pos.distance(intPoint)
-		dist     = dist - r	
+		distCenter = pos.distance(intPoint)
+		dist       = distCenter - r	
 		if dist < 0:
-			pdb.set_trace()
-		assert dist >= 0, "Distance has to be >=0"
+			#It is possible that a line (but not the line segment) intersects the ball. Then
+			#dist < 0, and we need to rule out such cases. 
+			assert distCenter >= 0
+			onSegment = l.is_on_segment(intPoint)
+			if onSegment:
+				print "Something is amiss" 
+				pdb.set_trace()
+			else:
+				continue
 		t = dist / speed
 		#Find the intersection point on line
 		#i.e. the point 

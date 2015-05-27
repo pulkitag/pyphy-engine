@@ -4,6 +4,7 @@ import primitives as pm
 import geometry as gm
 import matplotlib.pyplot as plt
 from matplotlib import animation
+from collections import deque
 
 ##
 #Try to paste a ball at a certain location
@@ -137,9 +138,21 @@ def ball_world_simulation():
 	plt.imshow(im)
 	model = pm.Dynamics(world)		
 	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(2000,100))
+	ballPos = deque()
+	nPlot   = 20
+	cmap    = plt.cm.ScalarMappable(cmap='jet')
+	cmap.set_clim((0,nPlot))
 	for i in range(100):
-		im = ball_world_step(i, model)
+		im  = ball_world_step(i, model)
 		plt.imshow(im)
+		pos = model.get_object_position('ball-0')
+		ballPos.append(pos)
+		for j in range(min(i, nPlot)):
+			plt.plot(ballPos[j].x(), ballPos[j].y(), '.',color=cmap.to_rgba(j))
+		if i >= nPlot:
+			p = ballPos.popleft()
+			plt.plot(p.x(), p.y(), '.',color=(1.0,1.0,1.0,1.0))
+ 
 		a = raw_input()
 		if a=='q':
 			break
