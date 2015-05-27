@@ -194,6 +194,17 @@ class Line:
 		pt.make_unit_norm()
 		return pt	
 
+	#Get the normal which points in the halfspace in
+	#which point pt lies. 
+	def get_normal_towards_point(self, pt):
+		nrml = self.get_normal()
+		ray   = Line(pt, pt + nrml)
+		intPt = self.get_intersection_ray()
+		if intPt is None:
+			return nrml.scale(-1)
+		else:
+			return nrml 	
+
 	def __str__(self):
 		return "(%.2f, %.2f, %.2f)" % (self.a_, self.b_, self.c_) 
 
@@ -273,7 +284,6 @@ class Line:
 			if relLoc != 1:
 				pt = None
 		return pt
-					
 
 ##
 #Circle
@@ -321,32 +331,42 @@ class Bbox:
 		self.vert_.append(rBot)
 		self.vert_.append(rTop)
 		self.N_ = len(self.vert_)
-		#self.l1_   = Line(lTop, lBot)
-		#self.l2_   = Line(lBot, rBot)
-		#self.l3_   = Line(rBot, rTop)
-		#self.l4_   = Line(rTop, lTop)
-
+		self.lines_ = []
+		self.make_lines()	
+		
 	@classmethod
 	def from_list(cls, pts):
-		self = cls()
-		self.vert_ = copy.deepcopy(pts)
-		self.N_    = len(self.vert_)
+		pts  = copy.deepcopy(pts)
+		assert len(pts)==4
+		self = cls(pts[0], pts[1], pts[2], pts[3])
 		return self
 
 	#offset the bbox
 	def move(self, offset):
 		for i, vertex in enumerate(self.vert_):
 			self.vert_[i] = vertex + offset
-		
+		self.make_lines()	
+	
+	#Make lines
+	def make_lines(self):
+		self.lines_ = []
+		for i in range(self.N_):
+			self.lines_.append(Line(self.vert_[i], self.vert_[np.mod(i+1,self.N_)]))
+
 	#Determine if a point is inside the box or not
 	def is_point_inside(self, pt):
 		assert len(self.vert_)==4, 'Only works for rectangles'
+		#If the lines are anticlockwise
 		inside=True
-		inside = inside and self.vert_[0].is_quad1(pt)
-		inside = inside and self.vert_[1].is_quad4(pt)
-		inside = inside and self.vert_[2].is_quad3(pt)
-		inside = inside and self.vert_[3].is_quad2(pt)
-		return inside
+		for l in self.lines_:
+			inLine = l.get_point_location(pt)
+			inside = inside and inLine >= 0
+		#Clockwise lines
+		clInside=True	
+		for l in self.lines_:
+			inLine = l.get_point_location(pt)
+			clInside = clInside and inLine <= 0
+		return (inside or clInside)
 
 	#Determine if the bbox intersects with los(Line of Sight)
 	def is_intersect_line(self, los):

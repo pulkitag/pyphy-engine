@@ -73,6 +73,15 @@ def get_rectangle_im(sz=gm.Point(4,100), fColor=Color(1.0, 0.0, 0.0)):
 	return cr, data
 
 
+def find_top_left(pts):
+	xMin, yMin = np.inf, np.inf
+	for p in pts:
+		xMin = min(xMin, p.x())
+		yMin = min(yMin, p.y())
+	pt = gm.Point(xMin, yMin)
+	return pt
+	
+
 def get_block_im(blockDir, fColor=Color(1.0, 0.0, 0.0), 
 									sThick=2, bThick=30, sColor=None):
 	'''
@@ -81,7 +90,7 @@ def get_block_im(blockDir, fColor=Color(1.0, 0.0, 0.0),
 	stPoint = gm.Point(0,0)
 	enPoint = stPoint + blockDir
 	pts = get_box_coords(stPoint, enPoint, wThick=bThick)
-	pt1, pt2, pt3, pt4 = b
+	pt1, pt2, pt3, pt4 = pts
 	#Create the points for drawing the block.
 	mnX   = min(pt1.x(), pt2.x(), pt3.x(), pt4.x())
 	mnY   = min(pt1.y(), pt2.y(), pt3.y(), pt4.y())
@@ -138,6 +147,7 @@ def get_box_coords(stPoint, enPoint, wThick=30):
 	pt3   = pt2 - (wThick * nrml)
 	pt4   = pt3 - (dist * lDir)
 	pts   = [pt1, pt2, pt3, pt4]
+	print pt1, pt2, pt3, pt4
 	return pts	
 
 
@@ -147,15 +157,12 @@ def create_cage(pts, wThick=30):
 		pts: a list of points
 	'''
 	N        = len(pts)
-	bboxs    = []
-	crs, ims = [], []  
+	walls    = []
 	for i,pt in enumerate(pts):
 		stPoint = pts[i]
-		enPoint = pts[np.mod(i,N)]
-		bPoints = get_box_coords(stPoint, enPoint, wThick=wThick)	
-		bboxs.append(gm.Bbox.from_list(bPoints))
-		cr, im = get_block_im(enPoint-stPoint, bThick=wThick)	
-		
+		enPoint = pts[np.mod(i+1,N)]
+		walls.append(GenericWall(stPoint, enPoint, wThick=wThick))
+	return walls		
 
 ##
 #Wall def just defines the physical properties. 
@@ -172,9 +179,9 @@ class GenericWall:
 							 name=None, wThick=4):
 		self.pts_ = get_box_coords(stPoint, enPoint, wThick=wThick)	
 		self.th_  = wThick
-		self.pos_ = self.pts_[-1] #This would be the top-left point
+		self.pos_ = find_top_left(self.pts_) #This would be the top-left point
 		self.make_data(stPoint, enPoint)
-		self.bbox_ = gm.Bbox(self.pts_)
+		self.bbox_ = gm.Bbox.from_list(self.pts_)
 
 	#Make the image data
 	def make_data(self, stPoint, enPoint):
@@ -188,13 +195,15 @@ class GenericWall:
 			xSz, ySz: Size of the canvas on which imprint has to be made. 
 		'''
 		#Create Source
-		y, x  = self.pos_.y(), self.pos_.x()		
+		y, x  = self.pos_.y_asint(), self.pos_.x_asint()		
 		srcIm = np.zeros((ySz, xSz, 4), dtype=np.uint8)
+		print "pos: (%f, %f), sz:(%f, %f)" % (x, y, self.imSzX_, self.imSzY_)
 		srcIm[y : y + self.imSzY_, x : x + self.imSzX_,:] = self.data_.im[:] 
 		surface = cairo.ImageSurface.create_for_data(srcIm, 
 								cairo.FORMAT_ARGB32, xSz, ySz)
 		cr.set_source_surface(surface)	
-		#Create Mask	
+		#Create Mask
+		pt1, pt2, pt3, pt4 = self.pts_	
 		cr.move_to(pt1.x(), pt1.y())
 		cr.line_to(pt2.x(), pt2.y())
 		cr.line_to(pt3.x(), pt3.y())
@@ -700,7 +709,7 @@ class World:
 			self.count_['wall'] += 1
 		elif isinstance(objDef, GenericWall):
 			name    = 'wall-%d' % self.count_['wall']
-			obj     = copy.deepcopy(objDef)
+			obj     = objDef
 			objType = 'static' 
 			self.count_['wall'] += 1
 		elif isinstance(objDef, BallDef):

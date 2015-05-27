@@ -55,7 +55,16 @@ def create_ball_world():
 
 def create_world_diamond():
 	world = pm.World(xSz=640, ySz=480)
-	
+	pt1   = gm.Point(100, 240)
+	pt2   = gm.Point(300, 140)
+	pt3   = gm.Point(500, 240)
+	pt4   = gm.Point(300, 340)
+	walls = pm.create_cage([pt1, pt2, pt3, pt4])
+	for w in walls:
+		world.add_object(w)
+	im = world.generate_image()	
+	return im, world	
+
 
 def create_ball_world_gray():
 	wThick = 30

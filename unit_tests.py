@@ -111,4 +111,33 @@ def test_pseudo_tangent_contact():
 	l1     = gm.Line(pt1, pt2)
 	iPt1   = circle.get_contact_point_pseudo_tangent(l1)
 	print iPt1	
+
+def all():
+	print "test_line_intersection()"
+	test_line_intersection()
+	print "#############"
 	
+	print "test_line_ray_intersection()"
+	test_line_ray_intersection()
+	print "#############"
+	
+	print "test_line_bbox_intersection()"
+	test_line_bbox_intersection()
+	print "#############"
+
+	print "test_line_ray_bbox_intersection()"
+	test_line_ray_bbox_intersection()
+	print "#############"
+	
+	print "test_reflect()"
+	test_reflect()
+	print "#############"
+
+	print "test_point_along_line()"
+	test_point_along_line()
+	print "#############"
+	
+	print "test_pseudo_tangent_contact()"
+	test_pseudo_tangent_contact()
+	print "#############"
+
