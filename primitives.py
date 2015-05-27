@@ -199,7 +199,7 @@ class GenericWall:
 		#Create Source
 		y, x  = self.pos_.y_asint(), self.pos_.x_asint()		
 		srcIm = np.zeros((ySz, xSz, 4), dtype=np.uint8)
-		print "pos: (%f, %f), sz:(%f, %f)" % (x, y, self.imSzX_, self.imSzY_)
+		#print "pos: (%f, %f), sz:(%f, %f)" % (x, y, self.imSzX_, self.imSzY_)
 		srcIm[y : y + self.imSzY_, x : x + self.imSzX_,:] = self.data_.im[:] 
 		surface = cairo.ImageSurface.create_for_data(srcIm, 
 								cairo.FORMAT_ARGB32, xSz, ySz)
@@ -465,9 +465,9 @@ class Dynamics:
 		pos = obj.get_mutable_position()
 		vel = obj.get_mutable_velocity()
 		#Update position: s = ut + 0.5at^2
-		pos = pos + deltaT * vel + (0.5 * deltaT * deltaT) * self.g_
+		pos = pos + (deltaT * vel) + ((0.5 * deltaT * deltaT) * self.g_)
 		#Update velocity: v = u + at
-		vel = vel + deltaT * self.g_
+		vel = vel + (deltaT * self.g_)
 		obj.set_position(pos)
 		obj.set_velocity(vel)
 		self.tCol_[name] = self.tCol_[name] - self.deltaT_
@@ -538,7 +538,8 @@ class Dynamics:
 
 		#Resolve an actual collision. 
 		obj2 = self.objCol_[name]
-		if isinstance(obj, Ball) and isinstance(obj2, Wall):
+		if (isinstance(obj, Ball) and (
+				isinstance(obj2, Wall) or isinstance(obj2, GenericWall))):
 			#Move the object to the position of collision
 			assert self.tCol_[name] <= deltaT
 			extraT = deltaT - self.tCol_[name]	
@@ -585,7 +586,7 @@ class Dynamics:
 			obj1, obj2: detection collision of object 1 with object 2
 		'''
 		if (isinstance(obj1, Ball) and (
-				isinstance(obj2, Wall) or isinstance(obj, GenericWall))):
+				isinstance(obj2, Wall) or isinstance(obj2, GenericWall))):
 		
 			toc, nrmlCol, ptCol = dy.get_toc_ball_wall(obj1, obj2)	
 			'''

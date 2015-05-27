@@ -55,13 +55,16 @@ def create_ball_world():
 
 def create_world_diamond():
 	world = pm.World(xSz=640, ySz=480)
-	pt1   = gm.Point(100, 240)
-	pt2   = gm.Point(300, 140)
-	pt3   = gm.Point(500, 240)
-	pt4   = gm.Point(300, 340)
-	walls = pm.create_cage([pt1, pt2, pt3, pt4])
+	pt1   = gm.Point(50, 240)
+	pt2   = gm.Point(300, 40)
+	pt3   = gm.Point(550, 240)
+	pt4   = gm.Point(300, 440)
+	walls = pm.create_cage([pt1, pt2, pt3, pt4], wThick=20)
 	for w in walls:
 		world.add_object(w)
+
+	bDef  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5))
+	world.add_object(bDef, initPos=gm.Point(200,200))
 	im = world.generate_image()	
 	return im, world	
 
@@ -101,7 +104,7 @@ def ball_world_simulation_nophysics():
 def create_single_ball_world_gray():
 	wThick = 30
 	world = pm.World(xSz=640, ySz=480)
-	bDef  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5), radius=50)
+	bDef  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5), radius=20)
 
 	xLength, yLength = 550, 400
 	wallHorDef = pm.WallDef(sz=gm.Point(xLength, wThick), fColor=pm.Color(0.5,0.5,0.5))
@@ -128,9 +131,12 @@ def ball_world_step(i, model):
 def ball_world_simulation(): 
 	plt.ion()
 	plt.figure()
-	_,world = create_single_ball_world_gray()
+	#_,world = create_single_ball_world_gray()
+	_,world = create_world_diamond()
+	im = world.generate_image()
+	plt.imshow(im)
 	model = pm.Dynamics(world)		
-	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(1000,1000))
+	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(2000,100))
 	for i in range(100):
 		im = ball_world_step(i, model)
 		plt.imshow(im)
