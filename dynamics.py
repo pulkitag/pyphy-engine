@@ -55,7 +55,7 @@ def get_toc_ball_wall(obj1, obj2):
 			ptCol   = linePoint					
 	
 	#pdb.set_trace()
-	print tCol, nrmlCol, ptCol
+	#print tCol, nrmlCol, ptCol
 	return tCol, nrmlCol, ptCol	
 	
 	

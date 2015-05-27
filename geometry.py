@@ -2,6 +2,7 @@ import numpy as np
 import copy
 import pdb
 
+TOL = 1e-08 #1e-06 works fine.
 class Point:
 	def __init__(self, x=0, y=0):
 		self.x_ = float(x)
@@ -210,7 +211,7 @@ class Line:
 		return "(%.2f, %.2f, %.2f)" % (self.a_, self.b_, self.c_) 
 
 	#Returns the location of the point wrt a line
-	def get_point_location(self, pt, tol=1e-6):
+	def get_point_location(self, pt, tol=TOL):
 		'''
 			returns: 1 is point is above the line (i.e. moving counter-clockwise from the line)
 							-1 if the point is below
@@ -226,7 +227,7 @@ class Line:
 
 	#Determines if the two points along the lie on the same line 
 	#and if yes, what is their relative position. 
-	def get_relative_location_points(self, pt1, pt2, tol=1e-06):
+	def get_relative_location_points(self, pt1, pt2, tol=TOL):
 		'''
 			returns: 0 is pt1 and pt2 donot lie on the line self
 						 : 1 if pt2 is along self from pt1
@@ -248,7 +249,7 @@ class Line:
 			return 0
 
 	#Determines if the point lies on the line segment
-	def is_on_segment(self, pt, tol=1e-06):
+	def is_on_segment(self, pt, tol=TOL):
 		d1 = self.st_.distance(pt)
 		d2 = self.en_.distance(pt)
 		d3 = self.st_.distance(self.en_)

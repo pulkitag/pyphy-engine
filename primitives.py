@@ -470,7 +470,8 @@ class Dynamics:
 		vel = vel + (deltaT * self.g_)
 		obj.set_position(pos)
 		obj.set_velocity(vel)
-		self.tCol_[name] = self.tCol_[name] - self.deltaT_
+		self.tCol_[name] = self.tCol_[name] - deltaT
+		assert self.tCol_[name] > -1e-8, 'tCol should be positive'
 		#print pos, vel
 
 	#1 time step
