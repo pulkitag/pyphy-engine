@@ -112,6 +112,18 @@ def test_pseudo_tangent_contact():
 	iPt1   = circle.get_contact_point_pseudo_tangent(l1)
 	print iPt1	
 
+
+def test_get_normal_towards_point():
+	pt1 = gm.Point(0,0)
+	pt2 = gm.Point(1,1)
+	l   = gm.Line(pt1, pt2)
+	pt3 = gm.Point(1,0)
+	nr1 = l.get_normal_towards_point(pt3)
+	print "GT: (0.71,-0.71), Predict: ", nr1
+	pt3 = gm.Point(0,1)
+	nr1 = l.get_normal_towards_point(pt3)
+	print "GT: (-0.71,0.71), Predict: ", nr1
+
 def all():
 	print "test_line_intersection()"
 	test_line_intersection()

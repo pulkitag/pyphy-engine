@@ -4,13 +4,15 @@ import collections as co
 import cairo
 import math
 import pdb
-import geometry as gm
-import physics as phy
 import copy
 from collections import deque
 import os
 import scipy.io as sio
 import scipy.misc as scm
+#Custom Modules
+import dynamics as dy
+import geometry as gm
+import physics as phy
 
 class Color:
 	def __init__(self, r, g, b, a=1.0):
@@ -212,6 +214,9 @@ class GenericWall:
 		#Fill source into the mask
 		cr.fill()
 
+	def get_lines(self):
+		return self.bbox_.get_lines()
+
 
 ##
 # Defines the physical properties along with the location etc of the object.
@@ -251,6 +256,9 @@ class Wall:
 		self.l3_   = gm.Line(self.rBot_, self.rTop_)
 		self.l4_   = gm.Line(self.rTop_, self.lTop_)
 		self.bbox_ = gm.Bbox(self.lTop_, self.lBot_, self.rBot_, self.rTop_)
+
+	def get_lines(self):
+		return self.bbox_.get_lines()
 
 	#Imprint the wall
 	def imprint(self, cr, xSz, ySz):
@@ -398,6 +406,9 @@ class Ball:
 	def set_mass(self, mass):
 		self.mass_ = mass
 
+	def get_radius(self):
+		return self.radius_
+
 	#The direction in which the ball is heading with the
 	#center of the ball as starting point of the line 
 	def get_heading_direction_line(self):
@@ -431,12 +442,16 @@ class Dynamics:
 		#Record which objects have been stepped and which have not been.
 		self.isStep_ = co.OrderedDict()
 		#Record time to collide and object of collision
-		self.tCol_   = co.OrderedDict()
-		self.objCol_ = co.OrderedDict()
+		self.tCol_    = co.OrderedDict()
+		self.objCol_  = co.OrderedDict()
+		self.nrmlCol_ = co.OrderedDict()
+		self.ptCol_   = co.OrderedDict() #Expected point of coll
 		for name in self.get_dynamic_object_names():
-			self.isStep_[name] = False
-			self.tCol_[name] = 0
-			self.objCol_[name] = None
+			self.isStep_[name]  = False
+			self.tCol_[name]    = 0
+			self.objCol_[name]  = None
+			self.nrmlCol_[name] = None
+			self.ptCol_[name]   = None
 
 	#Set gravity
 	def set_g(self, g):
@@ -529,6 +544,7 @@ class Dynamics:
 			self.move_object(obj, self.tCol_[name])
 			self.tCol_[name] = 0
 
+			'''
 			headingDir           = obj.get_heading_direction_line()
 			intersectPoint, dist = obj2.check_collision(headingDir)
 			if intersectPoint is None:
@@ -538,8 +554,10 @@ class Dynamics:
 			toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj.get_velocity())
 			assert toc < deltaT, 'Ball should be colliding now, it is not'		
 			#print toc
+			'''
 			#Get normals from the wall
-			nrml = obj2.get_collision_normal(intersectPoint)
+			#nrml = obj2.get_collision_normal(intersectPoint)
+			nrml  = self.nrmlCol_[name]
 			#Compute the new velocity
 			vel  = nrml.reflect_normal(obj.get_velocity()) 
 			#Set the new velocity
@@ -565,7 +583,11 @@ class Dynamics:
 		'''
 			obj1, obj2: detection collision of object 1 with object 2
 		'''
-		if isinstance(obj1, Ball) and isinstance(obj2, Wall):
+		if (isinstance(obj1, Ball) and (
+				isinstance(obj2, Wall) or isinstance(obj, GenericWall))):
+		
+			toc, nrmlCol, ptCol = dy.get_toc_ball_wall(obj1, obj2)	
+			'''
 			headingDir          = obj1.get_heading_direction_line()
 			intersectPoint, dist = obj2.check_collision(headingDir)
 			#pdb.set_trace()
@@ -574,10 +596,11 @@ class Dynamics:
 				toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj1.get_velocity())
 				#pdb.set_trace()
 			else:
-				toc = np.inf  	
+				toc = np.inf 
+			''' 	
 		else:
 			raise Exception('Collision type not recognized')
-		return toc	
+		return toc, nrmlCol, ptCol	
 	
 	#Get time to collision
 	def time_to_collide_all(self, obj, name):
@@ -588,11 +611,13 @@ class Dynamics:
 		for an in allNames:
 			if an == name:
 				continue
-			toc = self.time_to_collide(obj, self.get_object(an))
+			toc, nrmlCol, ptCol = self.time_to_collide(obj, self.get_object(an))
 			#print toc
 			if toc < self.tCol_[name]:
-				self.tCol_[name]   = toc
-				self.objCol_[name] = self.get_object(an)
+				self.tCol_[name]    = toc
+				self.objCol_[name]  = self.get_object(an)
+				self.nrmlCol_[name] = nrmlCol
+				self.ptCol_[name]   = ptCol 
 		#print self.tCol_[name]	
 	
 	#Get the image

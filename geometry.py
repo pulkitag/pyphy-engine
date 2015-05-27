@@ -199,10 +199,11 @@ class Line:
 	def get_normal_towards_point(self, pt):
 		nrml = self.get_normal()
 		ray   = Line(pt, pt + nrml)
-		intPt = self.get_intersection_ray()
+		intPt = self.get_intersection_ray(ray)
 		if intPt is None:
-			return nrml.scale(-1)
+			return nrml
 		else:
+			nrml.scale(-1)
 			return nrml 	
 
 	def __str__(self):
@@ -352,6 +353,9 @@ class Bbox:
 		self.lines_ = []
 		for i in range(self.N_):
 			self.lines_.append(Line(self.vert_[i], self.vert_[np.mod(i+1,self.N_)]))
+
+	def get_lines(self):
+		return self.lines_
 
 	#Determine if a point is inside the box or not
 	def is_point_inside(self, pt):
