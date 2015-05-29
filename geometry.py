@@ -138,6 +138,19 @@ class Point:
 		return dist
 
 
+def theta2dir(theta):
+	'''
+		theta: anti-clockwise and from the x-axis.
+					 in degrees 
+	'''	
+	theta = np.pi * (theta / 180.0)
+	x = np.cos(theta)
+	y = np.sin(theta)
+	pt = Point(x, y)
+	pt.make_unit_norm()
+	return pt	
+	
+
 class Line:
 	def __init__(self, pt1, pt2):
 		#The line points from st_ to en_

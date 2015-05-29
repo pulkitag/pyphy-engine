@@ -17,28 +17,43 @@ import physics as phy
 class DataSaver:	
 	def __init__(self, rootPath='/work5/pulkitag/projPhysics', numBalls=1,
 							 mnBallSz=15, mxBallSz=35, seqLen=100, 
-							 mnForce=1e+3, mxForce=1e+6, wThick=30):
-		self.expStr_   = 'nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d_wTh%d' % (numBalls, 
-											mnBallSz, mxBallSz, mnForce, mxForce, seqLen,
+							 mnForce=1e+3, mxForce=1e+6, wThick=30,
+							 isRect=False, wTheta=30, wLen=600,
+							 arenaSz=667):
+		'''
+			isRect  : If the walls need to be rectangular
+			wTheta  : If the walls are NOT rectangular then at what angles should they be present.
+			wLen    : Lenght of the walls
+			arenaSz : Size of the arena  
+		'''
+		#The name of the experiment. 
+		self.expStr_   = 'aSz%d_wLen%d_nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d_wTh%d' % (arenaSz,
+										  numBalls, wLen, mnBallSz, mxBallSz, mnForce, mxForce, seqLen,
 											wThick)
+		if isRect:
+			self.expStr_ = self.expStr_ + '_wTheta%d' % wTheta
+		#Setup directories.
 		self.dirName_  = os.path.join(rootPath, self.expStr_)
 		if not os.path.exists(self.dirName_):
 			os.makedirs(self.dirName_)
 		self.seqDir_   = os.path.join(self.dirName_, 'seq%06d')
 		self.seqLen_   = seqLen
 		self.imFile_   = 'im%06d.jpg'
-		self.dataFile_ = 'data.mat' 
+		self.dataFile_ = 'data.mat'
+		#Setup variables.  
 		self.numBalls_ = numBalls
 		self.bmn_      = mnBallSz
 		self.bmx_      = mxBallSz
 		self.fmn_      = mnForce
 		self.fmx_      = mxForce
-		self.whl_      = 600 #Horizontal wall length
-		self.wvl_      = 600 #Vertical wall length
-		self.xSz_      = 667
-		self.ySz_      = 667
+		self.whl_      = wLen #Horizontal wall length
+		self.wvl_      = wLen #Vertical wall length
+		self.xSz_      = arenaSz
+		self.ySz_      = arenaSz
 		self.wth_      = wThick
-		
+		self.isRect_   = isRect
+		self.wTheta_   = wTheta	
+
 	def save(self, numSeq=10):
 		for i in range(numSeq):
 			print i
@@ -71,20 +86,55 @@ class DataSaver:
 
 	def generate_model(self):
 		#Get the coordinates of the top point
+		#Create the world
+		self.world_ = pm.World(xSz=self.xSz_, ySz=self.ySz_)
+		#Add the walls
+		self.add_walls()
+		#Add the balls
+		self.add_balls()
+		#Create physics simulation
+		model = pm.Dynamics(self.world_)	
+		return self.apply_force(model)	
+
+	#This is mostly due to legacy reasons. 
+	def add_rectangular_walls(self):
+		#Define the extents within which walls can be put. 
 		topXmx = self.xSz_ - (self.whl_ + self.wth_)
 		topYmx = self.ySz_ - (self.wvl_ + self.wth_)
 		xLeft = np.floor(np.random.rand() * topXmx)
 		yTop  = np.floor(np.random.rand() * topYmx)	
-		#Create the world
-		world = pm.World(xSz=self.xSz_, ySz=self.ySz_)
 		#Define the walls
 		wallHorDef = pm.WallDef(sz=gm.Point(self.whl_, self.wth_), fColor=pm.Color(0.5,0.5,0.5))
 		wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, self.wvl_), fColor=pm.Color(0.5,0.5,0.5))
 		#Add the walls
-		world.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
-		world.add_object(wallVerDef, initPos=gm.Point(xLeft + self.whl_ - self.wth_, yTop))
-		world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
-		world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + self.wvl_))
+		self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
+		self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft + self.whl_ - self.wth_, yTop))
+		self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
+		self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + self.wvl_))
+
+	def add_walls(self):
+		if self.isRect_:
+			self.add_rectangular_walls()
+			return
+		#For adding diagonal walls
+		#1. Estimate the x and y extents of the wall. 
+		#2. Find the appropriate starting position based on that
+		rad  = (self.wTheta_ * np.pi)/360.0
+		xLen = self.whl_ * np.cos(rad)
+		yLen = self.whl_ * np.sin(rad)
+		xExtent = 2 * xLen +  2 * wThick
+		yExtent = 2 * yLen + 2 * wThick
+		xLeftMin = wThick  
+		xLeftMax = self.xSz_ - xExtent
+		yLeftMin  = yLen + wThick
+		yLeftMax  = self.ySz_ - yExtent 
+		assert xLeftMax >= xLeftMin and yLeftMax >= yLeftMin, "Size ranges are inappropriate"
+		xLeft    = xLeftMin + np.floor(np.random.rand() * (xLeftMax - xLeftMin))
+		yLeft    = yLeftMin  + np.floor(np.random.rand() * (yLeftMax - yLeftMin))	
+
+	
+	#Generates and adds the required number of balls. 
+	def add_balls(self):
 		#Generate ball definitions
 		bDefs = []
 		for i in range(self.numBalls_):
@@ -97,20 +147,19 @@ class DataSaver:
 			yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
 			xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
 			yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
-			world.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
-		#Create physics simulation
-		model = pm.Dynamics(world)	
-		#Apply initial forces to balls
-		for i in range(self.numBalls_):
-			ballName = 'ball-%d' % i
-			fx = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
-			fy = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
-			if np.random.rand() > 0.5:
-				fx = -fx
-			if np.random.rand() > 0.5:
-				fy = -fy
-			f  = gm.Point(fx, fy)
-			model.apply_force(ballName, f, forceT=1.0) 
-		return model, fx, fy
+			self.world_.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
 
+	#Apply intial forces on the balls
+	def apply_force(self, model):
+		for i in range(self.numBalls_):
+				ballName = 'ball-%d' % i
+				fx = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
+				fy = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
+				if np.random.rand() > 0.5:
+					fx = -fx
+				if np.random.rand() > 0.5:
+					fy = -fy
+				f  = gm.Point(fx, fy)
+				model.apply_force(ballName, f, forceT=1.0) 
+			return model, fx, fy
 
