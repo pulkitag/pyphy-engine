@@ -142,7 +142,8 @@ def theta2dir(theta):
 	'''
 		theta: anti-clockwise and from the x-axis.
 					 in degrees 
-	'''	
+	'''
+	assert -180 < theta <= 180	
 	theta = np.pi * (theta / 180.0)
 	x = np.cos(theta)
 	y = np.sin(theta)
@@ -201,6 +202,12 @@ class Line:
 		pt = self.en_ - self.st_
 		pt.make_unit_norm()
 		return pt
+
+	def distance_to_point(self, pt):
+		dist = self.a_ * pt.x() + self.b_ * pt.y() + self.c_
+		dnmr = np.sqrt(np.power(self.a_, 2) + np.power(self.b_, 2))
+		dist = dist / dnmr
+		return dist
 
 	#Returns the outward facing normal
 	def get_normal(self):
