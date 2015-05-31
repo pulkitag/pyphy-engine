@@ -13,9 +13,10 @@ import scipy.misc as scm
 import primitives as pm
 import geometry as gm
 import physics as phy
+import os
 
 class DataSaver:	
-	def __init__(self, rootPath='/work5/pulkitag/projPhysics', numBalls=1,
+	def __init__(self, rootPath='/data1/pulkitag/projPhysics', numBalls=1,
 							 mnBallSz=15, mxBallSz=35,
 							 mnSeqLen=10, mxSeqLen=100, 
 							 mnForce=1e+3, mxForce=1e+6, wThick=30,
@@ -247,7 +248,7 @@ class DataSaver:
 
 def save_nonrect_arena(numSeq=100):
 	sv = DataSaver(wThick=20, isRect=False, mxForce=1e+5, wLen=300,
-								 mnSeqLen=10, mxSeqLen=100, wTheta=[30, 60])
+								 mnSeqLen=10, mxSeqLen=100, wTheta=[23, 38, 45, 53])
 	sv.save(numSeq=numSeq)	
 
 
@@ -256,3 +257,16 @@ def save_rect_arena(numSeq=100):
 								 mnSeqLen=10, mxSeqLen=100)
 	sv.save(numSeq=numSeq)	
 
+
+def delete_garbage():
+	datDir = '/work5/pulkitag/projPhysics/aSz667_wLen300_nb1_bSz15-35_f1e+03-1e+05_sLen10-100_wTh2030-_wTheta60/seq%06d/'
+	for i in range(6000):
+		seqDir  = datDir % (i)
+		imFile  = seqDir + 'im%06d.jpg'
+		datFile = os.path.join(seqDir, 'data.mat')
+		dat     = sio.loadmat(datFile, squeeze_me=True)
+		N       = dat['position'].shape[1] 		
+		for j in range(N,100):
+			imName = imFile % j
+			if os.path.exists(imName):
+				os.remove(imName)		
