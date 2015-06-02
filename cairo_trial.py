@@ -5,6 +5,10 @@ import geometry as gm
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from collections import deque
+import scipy.misc as scm
+
+tmpDir = '/data1/pulkitag/tmp/projPhysics/'
+imName = tmpDir + 'im%d.jpg'
 
 ##
 #Try to paste a ball at a certain location
@@ -159,7 +163,8 @@ def ball_world_simulation():
 def create_multiple_ball_world_gray():
 	wThick = 30
 	world = pm.World(xSz=640, ySz=480)
-	bDef  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5), radius=20)
+	bDef1  = pm.BallDef(fColor=pm.Color(0.5,0.5,0.5), radius=20)
+	bDef2  = pm.BallDef(fColor=pm.Color(1.0,1.0,0.0), radius=20)
 	xLength, yLength = 550, 400
 	wallHorDef = pm.WallDef(sz=gm.Point(xLength, wThick), fColor=pm.Color(0.5,0.5,0.5))
 	wallVerDef = pm.WallDef(sz=gm.Point(wThick, yLength), fColor=pm.Color(0.5,0.5,0.5))
@@ -169,8 +174,8 @@ def create_multiple_ball_world_gray():
 	#Horizontal Wall
 	world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
 	world.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + yLength))
-	world.add_object(bDef, initPos=gm.Point(200,200))
-	world.add_object(bDef, initPos=gm.Point(400,200))
+	world.add_object(bDef1, initPos=gm.Point(200,200))
+	world.add_object(bDef2, initPos=gm.Point(400,200))
 	im = world.generate_image()	
 	return im, world	
 
@@ -181,11 +186,14 @@ def multi_ball_world_simulation():
 	im = world.generate_image()
 	plt.imshow(im)
 	model = pm.Dynamics(world)		
-	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(500,0))
-	model.world_.dynamic_['ball-1'].set_velocity(gm.Point(-1000,500))
-	for i in range(500):
+	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(1000,0))
+	model.world_.dynamic_['ball-1'].set_velocity(gm.Point(-2000,500))
+	#model.world_.dynamic_['ball-1'].set_velocity(gm.Point(0,0))
+	for i in range(15):
 		im  = ball_world_step(i, model)
-		plt.imshow(im)
+		name = imName % i
+		scm.imsave(name, im)
+		#plt.imshow(im)
 		#pos = model.get_object_position('ball-0')
 		#ballPos.append(pos)
 		#for j in range(min(i, nPlot)):
@@ -193,9 +201,9 @@ def multi_ball_world_simulation():
 		#if i >= nPlot:
 		#	p = ballPos.popleft()
 		#	plt.plot(p.x(), p.y(), '.',color=(1.0,1.0,1.0,1.0))
-		a = raw_input()
-		if a=='q':
-			break
+		#a = raw_input()
+		#if a=='q':
+		#	break
 
 ##
 # Get the data for some horizon

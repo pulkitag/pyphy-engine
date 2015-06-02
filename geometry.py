@@ -377,10 +377,40 @@ class Circle:
 	# find if the circle intersects with a line. 
 	def is_intersect_line(self, l):
 		dist = np.abs(l.distance_to_point(self.c_))
+		print dist
 		if dist <= self.r_:
 			return True
 		else:
 			return False
+
+	def intersect_moving_circle(self, circ2, v21)
+		'''
+			v21: velocity of 2 wrt 1
+		'''
+		p1, r1 = self.c_, self.r_
+		p2, r2 = circ2.c_, circ2.r_
+		p11 = p1 - p1
+		p21 = p2 - p1
+		l = gm.Line(p21, p21 + v21)
+		dist = np.abs(l.distance_to_point(p1))
+		if dist > (r1 + r2):
+			#No intersection can happend
+			return None,None
+		 
+		nrml = l.get_normal()
+		newP2_1 = p1 + (r1 + r2) * nrml
+		newP2_2 = p1 - (r1 + r2) * nrml
+		d1      = p21.distance(newP2_1)
+		d2      = p21.distance(newP2_2)
+		if d1 < d2:
+			#Line joining the centers
+			lCenters = gm.Line(p1, newP2_1)
+			colNrml   = lCenters.get_normal()
+			return newP2_1, colNrml
+		else:
+			lCenters = gm.Line(p1, newP2_2)
+			colNrml   = lCenters.get_normal()
+			return newP2_2, colNrml
 
 ##
 # Note this not specifically a rectangular BBox. It can be in general be 

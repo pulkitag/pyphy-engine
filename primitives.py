@@ -383,6 +383,7 @@ class Ball:
 		self.pos_       = initPos
 		self.tCol_      = 0
 		self.vel_       = initVel
+		self.futureVel_ = gm.Point(0,0)
 		self.density_   = density
 		self.mass_      = (4/3.0) * np.pi * np.power(self.radius_/10.0,3) * density
 		self.make_data()
@@ -450,7 +451,7 @@ class Ball:
 		return self.radius_
 
 	def set_after_collision_velocity(self, vel):
-		self.futureVel_ = vel
+		self.futureVel_ = copy.deepcopy(vel)
 
 	def set_future_to_current_velocity(self):
 		self.vel_ = copy.deepcopy(self.futureVel_)
@@ -517,6 +518,8 @@ class Dynamics:
 		self.deltaT_ = deltaT
 		#Record which objects have been stepped and which have not been.
 		self.isStep_ = co.OrderedDict()
+		#The collision Queue
+		self.colQueue_ = deque()
 		#Record time to collide and object of collision
 		self.tCol_    = co.OrderedDict()
 		self.objCol_  = co.OrderedDict()
@@ -525,13 +528,31 @@ class Dynamics:
 		for name in self.get_dynamic_object_names():
 			self.isStep_[name]  = False
 			self.tCol_[name]    = 0
-			self.objCol_[name]  = None
+			self.objCol_[name]  = (None, None)
 			self.nrmlCol_[name] = None
 			self.ptCol_[name]   = None
+			self.colQueue_.append(name)
 
 	#Set gravity
 	def set_g(self, g):
 		self.g_ = g
+
+	#Apply force on an object
+	def apply_force(self, objName, force, forceT=None):
+		'''
+			forceT: amount of time for which force is applied. 
+		'''
+		if forceT is None:
+			forceT = self.deltaT_
+		obj  = self.get_object(objName)
+		mass = obj.get_mass()
+		assert mass > 0, "Mass has to be a positive number"
+		a      = gm.Point.from_self(force)
+		a.scale(1.0/mass) 
+		deltaV = 0.5 * forceT * forceT * a
+		vel    = obj.get_velocity()
+		vel    = vel + deltaV
+		obj.set_velocity(vel)	 
 
 	#Get names of objects
 	def get_dynamic_object_names(self):
@@ -551,73 +572,57 @@ class Dynamics:
 		#print pos, vel
 
 	#1 time step
-	def step_object(self, obj, name):
+	def step_object(self, obj, name, deltaT):
 		if self.isStep_[name]:
 			return
-		if self.tCol_[name] < self.deltaT_:
-			self.resolve_collision(obj, name)
+		if self.tCol_[name] <= deltaT:
+			self.resolve_collision(obj, name, deltaT)
 			return
 		oldVel = obj.get_velocity()
-		self.move_object(obj, self.deltaT_, name)
-		#self.tCol_[name]   = self.tCol_[name] - self.deltaT_
-		#print self.tCol_[name]
+		self.move_object(obj, deltaT, name)
 		#If a sationary object has been set to motion, then perform resolve_collision
-		if oldVel.mag() == 0 and (obj.get_velocity()).mag() > 0:
-			self.resolve_collision(obj, name) 
+		#if oldVel.mag() == 0 and (obj.get_velocity()).mag() > 0:
+		#	self.resolve_collision(obj, name) 
 		self.isStep_[name] = True
-
-	#Apply force on an object
-	def apply_force(self, objName, force, forceT=None):
-		'''
-			forceT: amount of time for which force is applied. 
-		'''
-		if forceT is None:
-			forceT = self.deltaT_
-		obj  = self.get_object(objName)
-		mass = obj.get_mass()
-		assert mass > 0, "Mass has to be a positive number"
-		a      = gm.Point.from_self(force)
-		a.scale(1.0/mass) 
-		deltaV = 0.5 * forceT * forceT * a
-		vel    = obj.get_velocity()
-		vel    = vel + deltaV
-		obj.set_velocity(vel)	 
 
 	#Step the entire world
 	def step(self):
-		#Reset step states
-		for name in self.get_dynamic_object_names():
-			self.isStep_[name] = False
-		#Step every object
-		for name in self.get_dynamic_object_names():
-			self.step_object(self.world_.get_object(name), name)
-		 
+		tStep  = 0 #Amount of time already stepped.
+		#Make a move by self.deltaT_ 
+		count = 0
+		while True:
+			#Go through the collision que
+			N = len(self.colQueue_)
+			for i in range(N):
+				name = self.colQueue_.popleft()
+				obj  = self.get_object(name)
+				self.time_to_collide_all(obj, name)	
+			#Step by the amount that the first object will collide
+			#or otherwise step by deltaT. 
+			mntCol = np.inf
+			for name in self.get_dynamic_object_names():
+				obj = self.get_object(name)
+				#print name, 'toc', self.tCol_[name], "velocity is ", obj.get_velocity(), "future vel ", obj.futureVel_
+				self.isStep_[name] = False
+				mntCol = min(mntCol, self.tCol_[name])
+			t = min(mntCol, self.deltaT_ - tStep)
+			#print "t is", t
+			if t <=0:
+				break
+			#print "Did not break"
+			#Step every object
+			for name in self.get_dynamic_object_names():
+				self.step_object(self.world_.get_object(name), name, deltaT=t)
+			tStep += t		
+			count += 1
+ 
 	#Resolve the collisions
-	def resolve_collision(self, obj, name, deltaT=None):
-		if deltaT is None:
-			deltaT = self.deltaT_
+	def resolve_collision(self, obj, name, deltaT):
 		pos = obj.get_position()
 		vel = obj.get_velocity()
-		#Stationary object
-		if vel.mag() == 0:
-			self.tCol_[name] = np.inf
-			self.step_object(obj, name)
-			return	
-		#Stationary object just set into motion
-		if self.tCol_[name]==np.inf and vel.mag() > 0:
-			self.time_to_collide_all(obj, name)
-			return
-
-		#This can happen when there is intiial velocity provided to the object. 
-		if self.tCol_[name]==0 and self.objCol_[name] is None:
-			self.time_to_collide_all(obj, name)
-			return
-
-		#Resolve an actual collision. 
-		obj2 = self.objCol_[name]
+		obj2,name2 = self.objCol_[name]
 		#Move the object to the position of collision
-		assert self.tCol_[name] <= deltaT
-		extraT = deltaT - self.tCol_[name]	
+		assert self.tCol_[name] == deltaT
 		self.move_object(obj, self.tCol_[name], name)
 		if (isinstance(obj, Ball) and (
 				isinstance(obj2, Wall) or isinstance(obj2, GenericWall))):
@@ -627,68 +632,66 @@ class Dynamics:
 			vel  = nrml.reflect_normal(obj.get_velocity()) 
 			#Set the new velocity
 			obj.set_velocity(vel)
+			self.add_all_dynamic_collision_queue()			
+			#self.colQueue_.append((obj, name))
 	
 		elif (isinstance(obj, Ball) and isinstance(obj2, Ball)):
 			#Ball ball collision
+			#print "Setting velocity of ", name, "to ", obj.futureVel_ 
 			obj.set_future_to_current_velocity()
-	
+			self.add_all_dynamic_collision_queue()			
+
 		else:
 			print "Type obj1:", type(obj)
 			print "Type obj2:", type(obj2)
 			raise Exception('Collision type not recognized') 	
 		
 		#Check for iminent collisions
-		self.time_to_collide_all(obj, name)
-		if self.tCol_[name] > extraT:
+		#self.time_to_collide_all(obj, name)
+		#if self.tCol_[name] > extraT:
 			#If there is no collision in the left over time move the object
-			self.move_object(obj, extraT, name)
-		else:
+		#	self.move_object(obj, extraT, name)
+		#else:
 			#If the object can collide, check for these collisions
-			self.resolve_collision(obj, name, deltaT=extraT)
+		#	self.resolve_collision(obj, name, deltaT=extraT)
+
+	def add_all_dynamic_collision_queue(self):
+		for name in self.get_dynamic_object_names():
+			if self.colQueue_.count(name) == 0:
+				self.colQueue_.append(name)
 
 	#
-	def time_to_collide(self, obj1, obj2):
+	def time_to_collide(self, obj1, obj2, name1, name2):
 		'''
-			obj1, obj2: detection collision of object 1 with object 2
+			obj1, obj2  : detection collision of object 1 with object 2
+			name1, name2: Names of both the objects 
 		'''
 		if (isinstance(obj1, Ball) and (
 				isinstance(obj2, Wall) or isinstance(obj2, GenericWall))):
 		
 			toc, nrmlCol, ptCol = dy.get_toc_ball_wall(obj1, obj2)	
-			'''
-			headingDir          = obj1.get_heading_direction_line()
-			intersectPoint, dist = obj2.check_collision(headingDir)
-			#pdb.set_trace()
-			if intersectPoint is not None:
-				ptBall = obj1.get_point_of_contact(intersectPoint)
-				toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj1.get_velocity())
-				#pdb.set_trace()
-			else:
-				toc = np.inf 
-			''' 
 		elif (isinstance(obj1, Ball) and isinstance(obj2, Ball)):
-			toc, nrmlCol, ptCol = dy.get_toc_ball_ball(obj1, obj2)	
+			toc, nrmlCol, ptCol = dy.get_toc_ball_ball(obj1, obj2, name1, name2)	
 		else:
 			raise Exception('Collision type not recognized')
 		return toc, nrmlCol, ptCol	
 	
-	#Get time to collision
+	#Get time to collision of the object "obj" with name "name" with
+	#all other objects in the world. 
 	def time_to_collide_all(self, obj, name):
 		#Reset toc
 		self.tCol_[name]    = np.inf
-		self.objCol_[name]  = None
+		self.objCol_[name]  = (None, None)
 		allNames = self.world_.get_object_names()
 		for an in allNames:
 			if an == name:
 				continue
-			toc, nrmlCol, ptCol = self.time_to_collide(obj, self.get_object(an))
-			#print toc
+			toc, nrmlCol, ptCol = self.time_to_collide(obj, self.get_object(an), name, an)
 			if toc < self.tCol_[name]:
 				self.tCol_[name]    = toc
-				self.objCol_[name]  = self.get_object(an)
+				self.objCol_[name]  = (self.get_object(an), an)
 				self.nrmlCol_[name] = nrmlCol
 				self.ptCol_[name]   = ptCol 
-		#print self.tCol_[name]	
 	
 	#Get the image
 	def generate_image(self):
