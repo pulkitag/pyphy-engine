@@ -16,21 +16,22 @@ import physics as phy
 import os
 
 class DataSaver:	
-	def __init__(self, rootPath='/data1/pulkitag/projPhysics', numBalls=1,
+	def __init__(self, rootPath='/work5/pulkitag/projPhysics', numBalls=1,
 							 mnBallSz=15, mxBallSz=35,
 							 mnSeqLen=10, mxSeqLen=100, 
 							 mnForce=1e+3, mxForce=1e+6, wThick=30,
-							 isRect=True, wTheta=30, wLen=600,
+							 isRect=True, wTheta=30, mxWLen=600, mnWLen=200,
 							 arenaSz=667):
 		'''
 			isRect  : If the walls need to be rectangular
 			wTheta  : If the walls are NOT rectangular then at what angles should they be present.
-			wLen    : Lenght of the walls
+			mxWLen  : Maximum length of the walls
+			mnWLen  : Minimum length of the walls
 			arenaSz : Size of the arena  
 		'''
 		#The name of the experiment. 
-		self.expStr_   = 'aSz%d_wLen%d_nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d-%d_wTh%d' % (arenaSz,
-										  wLen, numBalls, mnBallSz, mxBallSz, mnForce, mxForce,
+		self.expStr_   = 'aSz%d_wLen%d-%d_nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d-%d_wTh%d' % (arenaSz,
+										  mnWLen, mxWLen, numBalls, mnBallSz, mxBallSz, mnForce, mxForce,
 										  mnSeqLen, mxSeqLen, wThick)
 		if not isRect:
 			if isinstance(wTheta, list):
@@ -54,8 +55,8 @@ class DataSaver:
 		self.bmx_      = mxBallSz
 		self.fmn_      = mnForce
 		self.fmx_      = mxForce
-		self.whl_      = wLen #Horizontal wall length
-		self.wvl_      = wLen #Vertical wall length
+		self.wlmx_     = mxWLen
+		self.wlmn_     = mnWLen
 		self.xSz_      = arenaSz
 		self.ySz_      = arenaSz
 		self.wth_      = wThick
@@ -112,19 +113,22 @@ class DataSaver:
 	#This is mostly due to legacy reasons. 
 	def add_rectangular_walls(self, fColor=pm.Color(1.0, 0.0, 0.0)):
 		#Define the extents within which walls can be put. 
-		topXmx = self.xSz_ - (self.whl_ + self.wth_)
-		topYmx = self.ySz_ - (self.wvl_ + self.wth_)
+		hLen   = np.floor(self.wlmn_ + np.random.rand() * (self.wlmx_ - self.wlmn_))
+		vLen   = np.floor(self.wlmn_ + np.random.rand() * (self.wlmx_ - self.wlmn_))
+		topXmx = self.xSz_ - (hLen + self.wth_)
+		topYmx = self.ySz_ - (vLen + self.wth_)
 		xLeft = np.floor(np.random.rand() * topXmx)
 		yTop  = np.floor(np.random.rand() * topYmx)	
 		#Define the walls
-		wallHorDef = pm.WallDef(sz=gm.Point(self.whl_, self.wth_), fColor=fColor)
-		wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, self.wvl_), fColor=fColor)
+		wallHorDef = pm.WallDef(sz=gm.Point(hLen, self.wth_), fColor=fColor)
+		wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, vLen), fColor=fColor)
 		#Add the walls
 		self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
-		self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft + self.whl_ - self.wth_, yTop))
+		self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft + hLen - self.wth_, yTop))
 		self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
-		self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + self.wvl_))
+		self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + vLen))
 		self.pts = [gm.Point(xLeft, yTop)]
+		self.whl_, self.wvl_ = hLen, vLen
 
 	def add_walls(self):
 		perm = np.random.permutation(len(self.wTheta_))
@@ -137,12 +141,13 @@ class DataSaver:
 		#2. Find the appropriate starting position based on that
 		#Sample the theta
 		rad  = (wTheta * np.pi)/180.0
+		hLen   = self.wlmn_ + np.random.rand() * (self.wlmx_ - self.wlmn_)
 		if wTheta == 90:
-			xLen = self.whl_
-			yLen = self.whl_
+			xLen = hLen
+			yLen = hLen
 		else:
-			xLen = self.whl_ * np.cos(rad)
-			yLen = self.whl_ * np.sin(rad)
+			xLen = hLen * np.cos(rad)
+			yLen = hLen * np.sin(rad)
 		xExtent = 2 * xLen +  2 * self.wth_
 		yExtent = 2 * yLen +  2 * self.wth_
 		xLeftMin = self.wth_  
@@ -162,12 +167,12 @@ class DataSaver:
 		#Get the coordinates for creating the boundaries.  
 		pt1      = gm.Point(xLeft, yLeft)
 		dir1     = gm.theta2dir(-wTheta)
-		pt2      = pt1 + (self.whl_ * dir1)
+		pt2      = pt1 + (hLen * dir1)
 		dir2     = gm.theta2dir(wTheta)
-		pt3      = pt2 + (self.whl_ * dir2)
+		pt3      = pt2 + (hLen * dir2)
 		theta3   = (180 - wTheta)
 		dir3     = gm.theta2dir(theta3)
-		pt4      = pt3 + (self.whl_ * dir3)
+		pt4      = pt3 + (hLen * dir3)
 		pts      = [pt1, pt2, pt3, pt4]
 		print "Points: ", pt1, pt2, pt3, pt4
 		walls    = pm.create_cage(pts, wThick = self.wth_)	
@@ -233,6 +238,7 @@ class DataSaver:
 
 	#Apply intial forces on the balls
 	def apply_force(self, model):
+		fx, fy = None, None
 		for i in range(self.numBalls_):
 			ballName = 'ball-%d' % i
 			fx = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
@@ -255,6 +261,11 @@ def save_nonrect_arena(numSeq=100):
 def save_rect_arena(numSeq=100):
 	sv = DataSaver(wThick=20, isRect=True, mxForce=1e+5, wLen=300,
 								 mnSeqLen=10, mxSeqLen=100)
+	sv.save(numSeq=numSeq)	
+
+def save_multishape_rect_arena(numSeq=10000):
+	sv = DataSaver(wThick=20, isRect=True, mnForce=5e+4, mxForce=5e+5, mnWLen=200, mxWLen=600,
+								 mnSeqLen=10, mxSeqLen=10, mnBallSz=25, mxBallSz=25)
 	sv.save(numSeq=numSeq)	
 
 

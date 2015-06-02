@@ -75,6 +75,46 @@ def get_rectangle_im(sz=gm.Point(4,100), fColor=Color(1.0, 0.0, 0.0)):
 	return cr, data
 
 
+def get_arrow_im(pt, fColor=Color(0.0, 0.0, 0.0), arrowWidth=3.0):
+	x, y = pt.x(), pt.y()
+	sz   = int(np.ceil(max(abs(x), abs(y))))
+	data = np.zeros((sz, sz, 4), dtype=np.uint8)
+	surface = cairo.ImageSurface.create_for_data(data, 
+							cairo.FORMAT_ARGB32, sz, sz)
+	cr      = cairo.Context(surface)
+	#Create a transparent source
+	cr.set_source_rgba(1.0, 1.0, 1.0, 0.0)
+	cr.paint()
+	#Start making the arrow
+	cr.set_source_rgba(fColor.b, fColor.g, fColor.r, fColor.a)
+	if x>=0 and y>=0:
+		xSt, ySt = 0, 0
+	elif x>0 and y < 0:
+		xSt, ySt = 0, sz
+	elif x <0 and y<0:
+		xSt, ySt = sz, sz
+	else:
+		xSt, ySt = sz, 0
+	stPoint = gm.Point(xSt, ySt) 
+	cr.move_to(xSt, ySt)
+	pt = pt + stPoint
+	dirVec = pt - stPoint
+	mag    = dirVec.mag()
+	cr.line_to(pt.x(), pt.y())
+	cr.set_line_width(arrowWidth)
+	side1 = dirVec.rotate_point(-150)
+	side1.scale(0.2)
+	ang1  = pt + side1 	
+	cr.line_to(ang1.x(), ang1.y())
+	side2 = dirVec.rotate_point(150)
+	side2.scale(0.2)
+	ang2  = pt + side2
+	cr.move_to(pt.x(), pt.y())
+	cr.line_to(ang2.x(), ang2.y())
+	cr.stroke()
+	return cr, data, stPoint
+	
+
 def find_top_left(pts):
 	xMin, yMin = np.inf, np.inf
 	for p in pts:
@@ -409,6 +449,12 @@ class Ball:
 	def get_radius(self):
 		return self.radius_
 
+	def set_after_collision_velocity(self, vel):
+		self.futureVel_ = vel
+
+	def set_future_to_current_velocity(self):
+		self.vel_ = copy.deepcopy(self.futureVel_)
+
 	#The direction in which the ball is heading with the
 	#center of the ball as starting point of the line 
 	def get_heading_direction_line(self):
@@ -428,7 +474,37 @@ class Ball:
 		#Get the point on the ball which will collide.
 		ptBall  = headDir.get_point_along_line(self.pos_, self.radius_)
 		return ptBall
-	
+
+
+class Arrow:
+	def __init__(self, pos, direction):
+		_, data, imSt = get_arrow_im(direction)
+		self.data_ = data
+		self.pos_  = pos
+		self.imSt_ = imSt 	
+		self.ySz_, self.xSz_ = data.shape[0], data.shape[1]
+
+	#Imprint the arrow
+	def imprint(self, cr, xSz, ySz):
+		#Get the position on the cnavas.
+		ySt, xSt  = self.pos_.y_asint() - self.imSt_.y_asint(), self.pos_.x_asint() - self.imSt_.x_asint()
+		yEn, xEn  = ySt + self.ySz_, xSt + self.xSz_
+		#Get the data that can be pasted
+		y1, x1 = np.abs(min(0, ySt)), np.abs(min(0, xSt))	
+		y2     = self.ySz_ - np.abs(min(0, ySz - yEn)) 
+		x2     = self.xSz_ - np.abs(min(0, xSz - xEn))
+		#Correct for positions on canvas
+		ySt, xSt = max(0, ySt), max(0, xSt)
+		yEn, xEn = min(ySz, yEn), min(xSz, xEn)
+ 
+		srcIm = np.zeros((ySz, xSz, 4), dtype=np.uint8)
+		srcIm[ySt:yEn, xSt:xEn,:] = self.data_.im[y1:y2, x1:x2] 
+		surface = cairo.ImageSurface.create_for_data(srcIm, 
+								cairo.FORMAT_ARGB32, xSz,ySz)
+		cr.set_source_surface(surface)		
+		cr.rectangle(xSt, ySt, x2 - x1, y2 - y1)
+		cr.fill()
+
 
 	
 class Dynamics:
@@ -539,49 +615,38 @@ class Dynamics:
 
 		#Resolve an actual collision. 
 		obj2 = self.objCol_[name]
+		#Move the object to the position of collision
+		assert self.tCol_[name] <= deltaT
+		extraT = deltaT - self.tCol_[name]	
+		self.move_object(obj, self.tCol_[name], name)
 		if (isinstance(obj, Ball) and (
 				isinstance(obj2, Wall) or isinstance(obj2, GenericWall))):
-			#Move the object to the position of collision
-			assert self.tCol_[name] <= deltaT
-			extraT = deltaT - self.tCol_[name]	
-			self.move_object(obj, self.tCol_[name], name)
-			#self.tCol_[name] = 0
-
-			'''
-			headingDir           = obj.get_heading_direction_line()
-			intersectPoint, dist = obj2.check_collision(headingDir)
-			if intersectPoint is None:
-				pdb.set_trace()
-			assert intersectPoint is not None, 'intersection point cannot be None'
-			ptBall = obj.get_point_of_contact(intersectPoint)
-			toc    = phy.time_from_pt1_pt2(ptBall, intersectPoint, obj.get_velocity())
-			assert toc < deltaT, 'Ball should be colliding now, it is not'		
-			#print toc
-			'''
 			#Get normals from the wall
-			#nrml = obj2.get_collision_normal(intersectPoint)
 			nrml  = self.nrmlCol_[name]
 			#Compute the new velocity
 			vel  = nrml.reflect_normal(obj.get_velocity()) 
 			#Set the new velocity
 			obj.set_velocity(vel)
-			#Check for iminent collisions
-			self.time_to_collide_all(obj, name)
-			if self.tCol_[name] > extraT:
-				self.move_object(obj, extraT, name)
-			else:
-				self.resolve_collision(obj, name, deltaT=extraT)			
-			#Move the ball for extraT
-			#self.move_object(obj, extraT)
-			#self.tCol_[name] = np.inf
-			#self.objCol_[name] = None
-			#self.resolve_collision(obj, name)
+	
+		elif (isinstance(obj, Ball) and isinstance(obj2, Ball)):
+			#Ball ball collision
+			obj.set_future_to_current_velocity()
+	
 		else:
 			print "Type obj1:", type(obj)
 			print "Type obj2:", type(obj2)
 			raise Exception('Collision type not recognized') 	
+		
+		#Check for iminent collisions
+		self.time_to_collide_all(obj, name)
+		if self.tCol_[name] > extraT:
+			#If there is no collision in the left over time move the object
+			self.move_object(obj, extraT, name)
+		else:
+			#If the object can collide, check for these collisions
+			self.resolve_collision(obj, name, deltaT=extraT)
 
-
+	#
 	def time_to_collide(self, obj1, obj2):
 		'''
 			obj1, obj2: detection collision of object 1 with object 2
@@ -600,7 +665,9 @@ class Dynamics:
 				#pdb.set_trace()
 			else:
 				toc = np.inf 
-			''' 	
+			''' 
+		elif (isinstance(obj1, Ball) and isinstance(obj2, Ball)):
+			toc, nrmlCol, ptCol = dy.get_toc_ball_ball(obj1, obj2)	
 		else:
 			raise Exception('Collision type not recognized')
 		return toc, nrmlCol, ptCol	
@@ -698,8 +765,10 @@ class World:
 		self.static_  = co.OrderedDict()
 		#Dynamic Objects
 		self.dynamic_ = co.OrderedDict()
-		#gm.Pointers to all objects
-		self.objects_ = co.OrderedDict()
+		#Pointers to all objects
+		self.objects_    = co.OrderedDict()
+		#Auxilary objects
+		self.auxObjects_ = co.OrderedDict()
 		#Count of objects
 		self.count_   = co.OrderedDict()
 		self.init_count()
@@ -765,6 +834,20 @@ class World:
 		else:
 			self.dynamic_[name] = obj		
 
+	#Delete an object
+	def del_object(self, name):
+		if name in self.objects_.keys():
+			del self.objects_[name]
+		elif  name in self.auxObjects_.keys():
+			del self.auxObjects_[name]
+		else:
+			raise Exception ('%s not found' % name)
+
+		if name in self.static_.keys():
+			del self.static_[name]
+		elif name in self.dynamic_[name]:
+			del self.dynamic_[name]
+
 	#
 	def get_object_position(self, objName):
 		return self.objects_[objName].get_position()
@@ -777,6 +860,10 @@ class World:
 	def increment_object_position(self, objName, deltaPos):
 		assert objName in self.dynamic_.keys()
 		self.dynamic_[objName].set_position(self.dynamic_[objName].get_position() + deltaPos)
+
+	#Draw an arrow
+	def draw_arrow(self, pos, direction):
+		pass	
 
 	def generate_image(self):
 		data    = np.zeros((self.ySz_, self.xSz_, 4), dtype=np.uint8)

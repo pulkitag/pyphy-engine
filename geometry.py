@@ -1,8 +1,10 @@
 import numpy as np
 import copy
 import pdb
+import math
 
 TOL = 1e-08 #1e-06 works fine.
+
 class Point:
 	def __init__(self, x=0, y=0):
 		self.x_ = float(x)
@@ -137,6 +139,28 @@ class Point:
 			raise Exception('DistType: %s not recognized')	
 		return dist
 
+	#Get the angle of the vector.
+	def get_angle(self, isRadian=False):
+		rad = math.atan2(self.y(), self.x())	
+		if isRadian:
+			return rad
+		else:
+			theta = math.degrees(rad)
+			return theta
+
+	#Rotate the point	
+	def rotate_point(self, rot, isRadian=False):
+		mag   = self.mag()
+		theta = self.get_angle(isRadian=isRadian)
+		theta = theta + rot 
+		if not isRadian:
+			rad = math.radians(theta)
+		x  = np.cos(rad)
+		y  = np.sin(rad)
+		pt = Point(x,y)
+		pt.make_unit_norm()
+		pt.scale(mag)
+		return pt 	 	
 
 def theta2dir(theta):
 	'''
@@ -349,6 +373,14 @@ class Circle:
 			intersectPoint = l.get_intersection_ray(lr)
 			assert intersectPoint is not None
 			return pt
+
+	# find if the circle intersects with a line. 
+	def is_intersect_line(self, l):
+		dist = np.abs(l.distance_to_point(self.c_))
+		if dist <= self.r_:
+			return True
+		else:
+			return False
 
 ##
 # Note this not specifically a rectangular BBox. It can be in general be 
