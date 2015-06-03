@@ -78,12 +78,14 @@ class DataSaver:
 			self.save_sequence(dataFile, imFile)
 
 	def save_sequence(self, dataFile, imFile):
-		model, fx, fy = self.generate_model()
+		model, f = self.generate_model()
 		force    = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
 		position = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
-		if self.numBalls_ > 1:
-			raise Exception ('this only works with one ball for now')
-		force[0,0], force[1,0] = fx, fy 
+		
+		for b in range(self.numBalls_):
+			fb = f[b]
+			st, en = 2*b, 2*b + 1
+			force[st,0], force[en,0] = fb.x(), fb.y() 
 		for i in range(self.seqLen_):
 			model.step()
 			im = model.generate_image()
@@ -211,38 +213,51 @@ class DataSaver:
 	#Generates and adds the required number of balls. 
 	def add_balls(self):
 		#Generate ball definitions
-		bDefs = []
+		allR, allPos = [], []
 		for i in range(self.numBalls_):
-			#Randomly sample the radius of the ball
-			r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
-			bDef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
-			#Find a position to keep the ball
-			if self.isRect_:
-				xLeft, yTop = self.pts[0].x_asint(), self.pts[0].y_asint()
-				xMn  = xLeft + 2 * r + self.wth_
-				yMn  = yTop  + 2 * r + self.wth_
-				xMx  = xLeft + self.whl_ - self.wth_ - 2 * r
-				yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
-				xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
-				yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
-			else:
-				findFlag = True
-				count    = 0
-				while findFlag:
-					pt, isValid, md = self.find_point_within_lines(r + self.wth_ + 2) #2 is safety margin	
-					count += 1
-					if isValid:
-						findFlag=False
-					if count >= 500:
-						print "Failed to find a point to place the ball"
-						pdb.set_trace()
-				print "Ball at (%f, %f), dist: %f" % (pt.x(), pt.y(), md)
-				xLoc, yLoc = pt.x_asint(), pt.y_asint()	
+			placeFlag = True
+			while placeFlag:
+				#Randomly sample the radius of the ball
+				r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
+				bDef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
+				#Find a position to keep the ball
+				if self.isRect_:
+					xLeft, yTop = self.pts[0].x_asint(), self.pts[0].y_asint()
+					xMn  = xLeft + 2 * r + self.wth_
+					yMn  = yTop  + 2 * r + self.wth_
+					xMx  = xLeft + self.whl_ - self.wth_ - 2 * r
+					yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
+					xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
+					yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
+				else:
+					findFlag = True
+					count    = 0
+					while findFlag:
+						pt, isValid, md = self.find_point_within_lines(r + self.wth_ + 2) #2 is safety margin	
+						count += 1
+						if isValid:
+							findFlag=False
+						if count >= 500:
+							print "Failed to find a point to place the ball"
+							pdb.set_trace()
+					print "Ball at (%f, %f), dist: %f" % (pt.x(), pt.y(), md)
+					xLoc, yLoc = pt.x_asint(), pt.y_asint()	
+				pt = gm.Point(xLoc, yLoc)
+				#Determine if the ball can be placed at the chosen position or not
+				isOk = True
+				for j in range(i):
+					dist = pt.distance(allPos[j])
+					print "Placement Dist:", dist
+					isOk = isOk and dist > (allR[j] + r)
+				if isOk:
+					placeFlag = False
+					allR.append(r)
+					allPos.append(pt)
 			self.world_.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
 
 	#Apply intial forces on the balls
 	def apply_force(self, model):
-		fx, fy = None, None
+		fs = []
 		for i in range(self.numBalls_):
 			ballName = 'ball-%d' % i
 			fx = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
@@ -253,7 +268,8 @@ class DataSaver:
 				fy = -fy
 			f  = gm.Point(fx, fy)
 			model.apply_force(ballName, f, forceT=1.0) 
-		return model, fx, fy
+			fs.append(f)
+		return model, fs
 
 
 def save_nonrect_arena_val(numSeq=100):
@@ -274,8 +290,10 @@ def save_rect_arena(numSeq=100):
 								 mnSeqLen=10, mxSeqLen=100)
 	sv.save(numSeq=numSeq)	
 
-def save_multishape_rect_arena(numSeq=1000):
-	sv = DataSaver(wThick=20, isRect=True, mnForce=5e+4, mxForce=5e+5, mnWLen=120, mxWLen=200,
+def save_multishape_rect_arena(numSeq=1000, numBalls=1):
+	drName = '/data1/pulkitag/projPhysics/'
+	sv = DataSaver(rootPath=drName,numBalls=numBalls,wThick=20, isRect=True, mnForce=5e+4,
+								 mxForce=5e+5, mnWLen=200, mxWLen=600,
 								 mnSeqLen=10, mxSeqLen=100, mnBallSz=25, mxBallSz=25)
 	sv.save(numSeq=numSeq)	
 

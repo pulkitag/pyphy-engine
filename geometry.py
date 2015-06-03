@@ -386,7 +386,7 @@ class Circle:
 	# find if the circle intersects with a line. 
 	def is_intersect_line(self, l):
 		dist = np.abs(l.distance_to_point(self.c_))
-		print dist
+		#print dist
 		if dist <= self.r_:
 			return True
 		else:
@@ -401,8 +401,8 @@ class Circle:
 		p11 = p1 - p1
 		p21 = p2 - p1
 		R     = r1 + r2
-		dBall = p21.distance(p11) + 1e-8
-		print "Ball Positions", p11, p21, dBall
+		dBall = p21.distance(p11) + 1e-6
+		#print "Ball Positions", p11, p21, dBall
 		assert dBall >= R, "dball: %f, R: %f" % (dBall, R) 
 		#Make a big circle and determine if there will be a collision
 		bigC = Circle(R, p11)
@@ -436,12 +436,12 @@ class Circle:
 			sinC   = dBall /(R / np.sin(theta))
 			thetaC = np.pi - math.asin(sinC)
 			thetaA = np.pi - (thetaC + theta)
-			print "Theta:", theta, "thetaA:", thetaA, "thetaC:", thetaC
+			#print "Theta:", theta, "thetaA:", thetaA, "thetaC:", thetaC
 			assert thetaA >= 0
 			dist   = (R / np.sin(theta)) * np.sin(thetaA) 
 
 		speed = v21.mag()
-		print "Distance between balls: ", dist, "speed: ", speed	
+		#print "Distance between balls: ", dist, "speed: ", speed	
 		#Get time to collision
 		if speed == 0:
 			return np.Inf, None, None
