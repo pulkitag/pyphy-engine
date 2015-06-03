@@ -162,6 +162,15 @@ class Point:
 		pt.scale(mag)
 		return pt 	 	
 
+	def get_angle_between(self, other):
+		pt1 = Point.from_self(self)
+		pt2 = Point.from_self(other)
+		pt1.make_unit_norm()
+		pt2.make_unit_norm()
+		cosTheta = pt1.dot(pt2)
+		theta    = math.acos(cosTheta)
+		return theta
+
 def theta2dir(theta):
 	'''
 		theta: anti-clockwise and from the x-axis.
@@ -383,7 +392,7 @@ class Circle:
 		else:
 			return False
 
-	def intersect_moving_circle(self, circ2, v21)
+	def intersect_moving_circle(self, circ2, v21):
 		'''
 			v21: velocity of 2 wrt 1
 		'''
@@ -391,27 +400,64 @@ class Circle:
 		p2, r2 = circ2.c_, circ2.r_
 		p11 = p1 - p1
 		p21 = p2 - p1
-		l = gm.Line(p21, p21 + v21)
-		dist = np.abs(l.distance_to_point(p1))
-		if dist > (r1 + r2):
-			#No intersection can happend
-			return None,None
-		 
-		nrml = l.get_normal()
-		newP2_1 = p1 + (r1 + r2) * nrml
-		newP2_2 = p1 - (r1 + r2) * nrml
-		d1      = p21.distance(newP2_1)
-		d2      = p21.distance(newP2_2)
-		if d1 < d2:
-			#Line joining the centers
-			lCenters = gm.Line(p1, newP2_1)
-			colNrml   = lCenters.get_normal()
-			return newP2_1, colNrml
-		else:
-			lCenters = gm.Line(p1, newP2_2)
-			colNrml   = lCenters.get_normal()
-			return newP2_2, colNrml
+		R     = r1 + r2
+		dBall = p21.distance(p11) + 1e-8
+		print "Ball Positions", p11, p21, dBall
+		assert dBall >= R, "dball: %f, R: %f" % (dBall, R) 
+		#Make a big circle and determine if there will be a collision
+		bigC = Circle(R, p11)
+		isIntersect = bigC.is_intersect_line(Line(p21, p21 + v21))
+		if not isIntersect:
+			return np.inf,None,None
 
+		#Now intersection is guaranteed to happen
+		#We have two sides of a triangle R, dBall and a third angle,
+		# made by the velocity vector. We will use this to solve
+		# for the point of contact. 
+		#Get the angle
+		c1c2         = p21 - p11
+		c1c2.scale(-1)
+		'''
+		thetaCenters = c1c2.get_angle(isRadian=True) 
+		theta = v21.get_angle(isRadian=True)
+		theta = thetaCenters - theta
+		if theta < 0:
+			theta = np.pi - np.abs(theta)
+		print theta
+		'''
+		theta = c1c2.get_angle_between(v21) 
+		if np.abs(theta) > np.pi/2:
+			pdb.set_trace()
+		assert np.abs(theta) < np.pi/2
+		theta = np.abs(theta)
+		if theta == 0:
+			dist = dBall - R
+		else:
+			sinC   = dBall /(R / np.sin(theta))
+			thetaC = np.pi - math.asin(sinC)
+			thetaA = np.pi - (thetaC + theta)
+			print "Theta:", theta, "thetaA:", thetaA, "thetaC:", thetaC
+			assert thetaA >= 0
+			dist   = (R / np.sin(theta)) * np.sin(thetaA) 
+
+		speed = v21.mag()
+		print "Distance between balls: ", dist, "speed: ", speed	
+		#Get time to collision
+		if speed == 0:
+			return np.Inf, None, None
+		vDir  = Point.from_self(v21)
+		vDir.make_unit_norm()
+		tCol  = dist / speed 
+	
+		#Get the new center after moving the circle.	
+		newP2   = p21 + dist * vDir
+		#Line joining the centers
+		#lCenters = Line(p11, newP2)
+		lCenters = Line(newP2, p11)
+		colNrml   = lCenters.get_normal()
+		newP2 = newP2 + p1
+		return tCol, newP2, colNrml
+		
 ##
 # Note this not specifically a rectangular BBox. It can be in general be 
 # of any shape. 

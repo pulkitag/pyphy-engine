@@ -130,16 +130,13 @@ class DataSaver:
 		self.pts = [gm.Point(xLeft, yTop)]
 		self.whl_, self.wvl_ = hLen, vLen
 
-	def add_walls(self):
-		perm = np.random.permutation(len(self.wTheta_))
-		wTheta = self.wTheta_[perm[0]]
-		if self.isRect_:
-			self.add_rectangular_walls()
-			return
+	def sample_walls(self):
 		#For adding diagonal walls
 		#1. Estimate the x and y extents of the wall. 
 		#2. Find the appropriate starting position based on that
 		#Sample the theta
+		perm = np.random.permutation(len(self.wTheta_))
+		wTheta = self.wTheta_[perm[0]]
 		rad  = (wTheta * np.pi)/180.0
 		hLen   = self.wlmn_ + np.random.rand() * (self.wlmx_ - self.wlmn_)
 		if wTheta == 90:
@@ -156,14 +153,21 @@ class DataSaver:
 		if wTheta == 90:
 			yLeftMax = self.ySz_ - self.wth_
 		else:
-			#yLeftMax  = self.ySz_ - yExtent
 			yLeftMax  = self.ySz_ - (yLen + self.wth_)
-		print "theta: ", wTheta, xLen, yLen, xLeftMin, xLeftMax, yLeftMin, yLeftMax 
-		assert xLeftMax >= xLeftMin and yLeftMax >= yLeftMin, "Size ranges are inappropriate"
-		assert xLeftMin > 0 and yLeftMin > 0
-		print "MinMax: ", xLeftMin, xLeftMax, yLeftMin, yLeftMax
+		#Keep sampling until the appropriate size has been found. 
+		if xLeftMin <= 0 or yLeftMin <=0:
+			return self.sample_walls()
+		if xLeftMax < xLeftMin or yLeftMax < yLeftMin:
+			return self.sample_walls()
 		xLeft    = xLeftMin + np.floor(np.random.rand() * (xLeftMax - xLeftMin))
 		yLeft    = yLeftMin  + np.floor(np.random.rand() * (yLeftMax - yLeftMin))	
+		return xLeft, yLeft, wTheta, hLen	
+
+	def add_walls(self):
+		if self.isRect_:
+			self.add_rectangular_walls()
+			return
+		xLeft, yLeft, wTheta, hLen = self.sample_walls()
 		#Get the coordinates for creating the boundaries.  
 		pt1      = gm.Point(xLeft, yLeft)
 		dir1     = gm.theta2dir(-wTheta)
@@ -252,9 +256,16 @@ class DataSaver:
 		return model, fx, fy
 
 
-def save_nonrect_arena(numSeq=100):
+def save_nonrect_arena_val(numSeq=100):
 	sv = DataSaver(wThick=20, isRect=False, mxForce=1e+5, wLen=300,
 								 mnSeqLen=10, mxSeqLen=100, wTheta=[23, 38, 45, 53])
+	sv.save(numSeq=numSeq)	
+
+def save_nonrect_arena_train(numSeq=10000):
+	drName = '/data1/pulkitag/projPhysics/'
+	sv = DataSaver(rootPath=drName, wThick=20, isRect=False, mnForce=5e+4, mxForce=5e+5, 
+								 mnWLen=200, mxWLen=500,
+								 mnSeqLen=10, mxSeqLen=10, mnBallSz=25, mxBallSz=25, wTheta=[30, 60], arenaSz=1000)
 	sv.save(numSeq=numSeq)	
 
 
@@ -263,9 +274,9 @@ def save_rect_arena(numSeq=100):
 								 mnSeqLen=10, mxSeqLen=100)
 	sv.save(numSeq=numSeq)	
 
-def save_multishape_rect_arena(numSeq=10000):
-	sv = DataSaver(wThick=20, isRect=True, mnForce=5e+4, mxForce=5e+5, mnWLen=200, mxWLen=600,
-								 mnSeqLen=10, mxSeqLen=10, mnBallSz=25, mxBallSz=25)
+def save_multishape_rect_arena(numSeq=1000):
+	sv = DataSaver(wThick=20, isRect=True, mnForce=5e+4, mxForce=5e+5, mnWLen=120, mxWLen=200,
+								 mnSeqLen=10, mxSeqLen=100, mnBallSz=25, mxBallSz=25)
 	sv.save(numSeq=numSeq)	
 
 

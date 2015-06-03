@@ -84,11 +84,25 @@ def get_toc_ball_ball(obj1, obj2, name1, name2):
 	if speed <= 0:
 		#If the balls will not collide
 		return tCol, nrmlCol, ptCol
+	
+	circ1 = gm.Circle(obj1.get_radius(), pos1)
+	circ2 = gm.Circle(obj2.get_radius(), pos2)
+	tCol, ptCol, nrmlCol = circ1.intersect_moving_circle(circ2, relVel)
+	print tCol
+	if ptCol is None:
+		return tCol, nrmlCol, ptCol
+	print '##### NRML ####',tCol,ptCol, nrmlCol
+	vOth1 = vel1.project(nrmlCol)
+	vOth2 = vel2.project(nrmlCol)
+	vCol1 = vel1 - vOth1
+	vCol2 = vel2 - vOth2
+	
+	'''
 	#There is one more situation in which no collision will happen.
-	pos11 = pos1 - pos1
-	pos21 = pos2 - pos1
-	circ = gm.Circle(obj1.get_radius(), pos11)
-	isIntersect = circ.is_intersect_line(gm.Line(pos21, pos21 + relVel))
+	#pos11 = pos1 - pos1
+	#pos21 = pos2 - pos1
+	#circ = gm.Circle(obj1.get_radius(), pos11)
+	#isIntersect = circ.is_intersect_line(gm.Line(pos21, pos21 + relVel))
 	#circ = gm.Circle(obj1.get_radius(), pos1)
 	#isIntersect = circ.is_intersect_line(gm.Line(pos2, pos2 + relVel))
 	if not isIntersect:
@@ -101,6 +115,7 @@ def get_toc_ball_ball(obj1, obj2, name1, name2):
 	vCol2 = vel2.project(colDir)
 	vOth1 = vel1 - vCol1
 	vOth2 = vel2 - vCol2
+	'''
 	#Find the new velocities along the direction of collision
 	m1 = obj1.get_mass()
 	m2 = obj2.get_mass()
@@ -116,5 +131,5 @@ def get_toc_ball_ball(obj1, obj2, name1, name2):
 	#print vel1, vel1New, vel2, vel2New, vel1New.mag(), vel2New.mag()
 	print 'After col det', name1, vel1New
 	print 'After col det', name2, vel2New
-	return t, None, None	
+	return tCol, nrmlCol, ptCol	
 			

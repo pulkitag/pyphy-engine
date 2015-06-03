@@ -602,7 +602,7 @@ class Dynamics:
 			mntCol = np.inf
 			for name in self.get_dynamic_object_names():
 				obj = self.get_object(name)
-				#print name, 'toc', self.tCol_[name], "velocity is ", obj.get_velocity(), "future vel ", obj.futureVel_
+				print name, 'toc', self.tCol_[name], "velocity is ", obj.get_velocity(), "future vel ", obj.futureVel_
 				self.isStep_[name] = False
 				mntCol = min(mntCol, self.tCol_[name])
 			t = min(mntCol, self.deltaT_ - tStep)

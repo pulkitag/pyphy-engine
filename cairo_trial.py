@@ -188,8 +188,9 @@ def multi_ball_world_simulation():
 	model = pm.Dynamics(world)		
 	model.world_.dynamic_['ball-0'].set_velocity(gm.Point(1000,0))
 	model.world_.dynamic_['ball-1'].set_velocity(gm.Point(-2000,500))
+	#model.world_.dynamic_['ball-1'].set_velocity(gm.Point(-100,0))
 	#model.world_.dynamic_['ball-1'].set_velocity(gm.Point(0,0))
-	for i in range(15):
+	for i in range(1000):
 		im  = ball_world_step(i, model)
 		name = imName % i
 		scm.imsave(name, im)
