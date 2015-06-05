@@ -168,6 +168,8 @@ class Point:
 		pt1.make_unit_norm()
 		pt2.make_unit_norm()
 		cosTheta = pt1.dot(pt2)
+		if cosTheta < 1 + 1e-6:
+			cosTheta = min(1, cosTheta)
 		theta    = math.acos(cosTheta)
 		return theta
 
