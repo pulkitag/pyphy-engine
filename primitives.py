@@ -848,7 +848,7 @@ class World:
 
 		if name in self.static_.keys():
 			del self.static_[name]
-		elif name in self.dynamic_[name]:
+		elif name in self.dynamic_.keys():
 			del self.dynamic_[name]
 
 	#

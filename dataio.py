@@ -296,17 +296,19 @@ def save_nonrect_arena_val(numSeq=100):
 								 mnSeqLen=10, mxSeqLen=100, wTheta=[23, 38, 45, 53])
 	sv.save(numSeq=numSeq)	
 
-def save_nonrect_arena_train(numSeq=10000):
+def save_nonrect_arena_train(numSeq=10000, numBalls=1):
 	drName = '/data1/pulkitag/projPhysics/'
-	sv = DataSaver(rootPath=drName, wThick=20, isRect=False, mnForce=5e+4, mxForce=5e+5, 
-								 mnWLen=200, mxWLen=500,
-								 mnSeqLen=10, mxSeqLen=10, mnBallSz=25, mxBallSz=25, wTheta=[30, 60], arenaSz=1000)
+	sv = DataSaver(rootPath=drName, wThick=30, isRect=False, mnForce=3e+4, mxForce=8e+4, 
+								 mnWLen=500, mxWLen=800, numBalls=numBalls,
+								 mnSeqLen=10, mxSeqLen=200, mnBallSz=25, mxBallSz=25, wTheta=[30, 60], arenaSz=1600)
 	sv.save(numSeq=numSeq)	
 
 
-def save_rect_arena(numSeq=100):
-	sv = DataSaver(wThick=20, isRect=True, mxForce=1e+5, wLen=300,
-								 mnSeqLen=10, mxSeqLen=100)
+def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1):
+	sv = DataSaver(wThick=30, isRect=True, mnForce=3e+4, mxForce=8e+4, 
+								 mnWLen=300, mxWLen=550, mnSeqLen=10, mxSeqLen=200,
+								 numBalls=numBalls, mnBallSz=25, mxBallSz=25, arenaSz=700,
+								 oppForce=oppForce)
 	sv.save(numSeq=numSeq)	
 
 def save_multishape_rect_arena(numSeq=1000, numBalls=1, oppForce=False):
