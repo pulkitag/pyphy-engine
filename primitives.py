@@ -478,8 +478,8 @@ class Ball:
 
 
 class Arrow:
-	def __init__(self, pos, direction):
-		cr, data, imSt = get_arrow_im(direction)
+	def __init__(self, pos, direction, fColor=Color(0.0, 0.0, 0.0)):
+		cr, data, imSt = get_arrow_im(direction, fColor=fColor)
 		self.data_ = CairoData(cr, data)
 		self.pos_  = pos
 		self.imSt_ = imSt 	
@@ -865,8 +865,8 @@ class World:
 		self.dynamic_[objName].set_position(self.dynamic_[objName].get_position() + deltaPos)
 
 	#Draw an arrow
-	def draw_arrow(self, pos, direction):
-		arrow    = Arrow(pos, direction)	
+	def draw_arrow(self, pos, direction, fColor=Color(0.0, 0.0, 0.0)):
+		arrow    = Arrow(pos, direction, fColor=fColor)	
 		data, cr = self.generate_image(returnContext=True)
 		arrow.imprint(cr, self.xSz_, self.ySz_)
 		return data
