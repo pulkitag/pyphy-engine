@@ -479,8 +479,8 @@ class Ball:
 
 class Arrow:
 	def __init__(self, pos, direction):
-		_, data, imSt = get_arrow_im(direction)
-		self.data_ = data
+		cr, data, imSt = get_arrow_im(direction)
+		self.data_ = CairoData(cr, data)
 		self.pos_  = pos
 		self.imSt_ = imSt 	
 		self.ySz_, self.xSz_ = data.shape[0], data.shape[1]
@@ -866,9 +866,13 @@ class World:
 
 	#Draw an arrow
 	def draw_arrow(self, pos, direction):
-		pass	
+		arrow    = Arrow(pos, direction)	
+		data, cr = self.generate_image(returnContext=True)
+		arrow.imprint(cr, self.xSz_, self.ySz_)
+		return data
 
-	def generate_image(self):
+	#Generate the image of the world
+	def generate_image(self, returnContext=False):
 		data    = np.zeros((self.ySz_, self.xSz_, 4), dtype=np.uint8)
 		data[:] = self.baseCanvas_.im[:]
 		surface = cairo.ImageSurface.create_for_data(data, 
@@ -876,4 +880,7 @@ class World:
 		cr      = cairo.Context(surface)
 		for key, obj in self.objects_.iteritems():
 			obj.imprint(cr, self.xSz_, self.ySz_)
-		return data
+		if returnContext:
+			return data, cr
+		else:
+			return data
