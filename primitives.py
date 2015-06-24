@@ -9,6 +9,7 @@ from collections import deque
 import os
 import scipy.io as sio
 import scipy.misc as scm
+import pickle
 #Custom Modules
 import dynamics as dy
 import geometry as gm
@@ -183,18 +184,18 @@ def get_box_coords(stPoint, enPoint, wThick=30):
 	dist  = pDiff.mag()
 	nrml  = line.get_normal()
 	lDir  = line.get_direction()
-	#pt1   = stPoint + (bThick/2.0) * nrml 
+	#print "nrml", nrml
 	pt1   = stPoint 
 	pt2   = pt1 + dist * lDir
 	pt3   = pt2 - (wThick * nrml)
 	pt4   = pt3 - (dist * lDir)
 	pts   = [pt1, pt2, pt3, pt4]
-	print pt1, pt2, pt3, pt4
+	#print pt1, pt2, pt3, pt4
 	return pts	
 
 
 #Create a cage
-def create_cage(pts, wThick=30):
+def create_cage(pts, wThick=30, fColor=Color(1.0, 0.0, 0.0)):
 	'''
 		pts: a list of points
 	'''
@@ -203,7 +204,7 @@ def create_cage(pts, wThick=30):
 	for i,pt in enumerate(pts):
 		stPoint = pts[i]
 		enPoint = pts[np.mod(i+1,N)]
-		walls.append(GenericWall(stPoint, enPoint, wThick=wThick))
+		walls.append(GenericWall(stPoint, enPoint, wThick=wThick, fColor=fColor))
 	return walls		
 
 ##
@@ -758,7 +759,7 @@ class DynamicsHorizon:
 
 
 #The world
-class World:
+class World(object):
 	def __init__(self, xSz=200, ySz=200, deltaT=0.1):
 		'''
 			xSz, ySz: Size of the cavas that defines the world.
@@ -780,6 +781,12 @@ class World:
 		self.ySz_     = ySz 
 		cr, im        = get_rectangle_im(sz=gm.Point(xSz,ySz), fColor=Color(1.0,1.0,1.0))
 		self.baseCanvas_ = CairoData(cr, im)
+
+	def save_to_file(self, outName):
+		objs = {}
+		for ob in self.objects_.keys():
+			objs[ob] = copy.deepcopy(self.objects_[ob])
+		pickle.dump(objs, open(outName, 'wb'), pickle.HIGHEST_PROTOCOL)
 
 	#Contains the names of primitives that the world
 	# can have.

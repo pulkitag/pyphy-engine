@@ -207,10 +207,12 @@ class Line:
 		self.b_ = float(self.en_.x() - self.st_.x())
 		self.c_ = float(self.st_.x() * self.en_.y() - self.st_.y() * self.en_.x())
 		aMag = np.abs(self.a_)
-		if aMag > 0:
+		if aMag > TOL:
 			self.a_ = self.a_ / aMag
 			self.b_ = self.b_ / aMag
 			self.c_ = self.c_ / aMag
+		else:
+			self.a_ = 0.0
 
 	def a(self):
 		return copy.deepcopy(self.a_)

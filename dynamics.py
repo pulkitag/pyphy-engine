@@ -30,7 +30,9 @@ def get_toc_ball_wall(obj1, obj2):
 		#Find the time of collision
 		ray = gm.Line(pos, pos + nrml)
 		intPoint = l.get_intersection_ray(ray)
-		assert intPoint is not None, "Intersection point cannot be none"
+		#print l
+		assert intPoint is not None, ("Intersection point cannot be none - pos, nmrl", 
+												pos.x(), pos.y(), nrml.x(), nrml.y())
 		distCenter = pos.distance(intPoint)
 		dist       = distCenter - r	
 		if dist < 0:

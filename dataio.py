@@ -9,6 +9,7 @@ from collections import deque
 import os
 import scipy.io as sio
 import scipy.misc as scm
+import pickle
 #Custom packages
 import primitives as pm
 import geometry as gm
@@ -21,18 +22,23 @@ class DataSaver:
 							 mnSeqLen=10, mxSeqLen=100, 
 							 mnForce=1e+3, mxForce=1e+6, wThick=30,
 							 isRect=True, wTheta=30, mxWLen=600, mnWLen=200,
-							 arenaSz=667, oppForce=False):
+							 arenaSz=667, oppForce=False,
+							 svPrefix=None):
 		'''
 			isRect  : If the walls need to be rectangular
 			wTheta  : If the walls are NOT rectangular then at what angles should they be present.
 			mxWLen  : Maximum length of the walls
 			mnWLen  : Minimum length of the walls
-			arenaSz : Size of the arena  
+			arenaSz : Size of the arena 
+			svPrefix: Prefix in the file names for saving the data 
 		'''
 		#The name of the experiment. 
 		self.expStr_   = 'aSz%d_wLen%d-%d_nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d-%d_wTh%d' % (arenaSz,
 										  mnWLen, mxWLen, numBalls, mnBallSz, mxBallSz, mnForce, mxForce,
 										  mnSeqLen, mxSeqLen, wThick)
+		if svPrefix is not None:
+			self.expStr_ = svPrefix + '-' + self.expStr_
+
 		if not isRect:
 			if isinstance(wTheta, list):
 				thetaStr = '_wTheta'.join('%d-' % th for th in wTheta)
@@ -50,8 +56,9 @@ class DataSaver:
 		self.seqDir_   = os.path.join(self.dirName_, 'seq%06d')
 		self.mnSeqLen_   = mnSeqLen
 		self.mxSeqLen_   = mxSeqLen
-		self.imFile_   = 'im%06d.jpg'
-		self.dataFile_ = 'data.mat'
+		self.imFile_    = 'im%06d.jpg'
+		self.dataFile_  = 'data.mat'
+		self.worldFile_ = 'world.pkl' #Saves the world. 
 		#Setup variables.  
 		self.numBalls_ = numBalls
 		self.bmn_      = mnBallSz
@@ -77,24 +84,33 @@ class DataSaver:
 			seqDir = self.seqDir_ % i
 			if not os.path.exists(seqDir):
 				os.makedirs(seqDir)
-			dataFile = os.path.join(seqDir, self.dataFile_)
-			imFile   = os.path.join(seqDir, self.imFile_) 
-			self.save_sequence(dataFile, imFile)
+			dataFile  = os.path.join(seqDir, self.dataFile_)
+			imFile    = os.path.join(seqDir, self.imFile_) 
+			worldFile = os.path.join(seqDir, self.worldFile_)
+			self.save_sequence(dataFile, imFile, worldFile)
 
-	def save_sequence(self, dataFile, imFile):
-		model, f = self.generate_model()
+	def save_sequence(self, dataFile, imFile, worldFile):
+		model, f, ballPos, walls = self.generate_model()
 		force    = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
 		position = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
-		
+
+		#Collect all the objects in the worlds
+		#objs = {}
+		#for name in self.world_.get_object_names():
+		#	objs[name] = self.world_.get_object(name)
+		#pdb.set_trace()
+		pickle.dump({'force': f, 'ballPos': ballPos, 'walls': self.pts}, open(worldFile,'w'))
+
 		for b in range(self.numBalls_):
 			fb = f[b]
 			st, en = 2*b, 2*b + 1
-			force[st,0], force[en,0] = fb.x(), fb.y() 
+			force[st,0], force[en,0] = fb.x(), fb.y()
+			print fb 
 		for i in range(self.seqLen_):
-			model.step()
 			im = model.generate_image()
 			svImFile = imFile % i
 			scm.imsave(svImFile, im)				
+			model.step()
 			for j in range(self.numBalls_):
 				ballName = 'ball-%d' % j
 				ball     = model.get_object(ballName)
@@ -108,13 +124,14 @@ class DataSaver:
 		#Create the world
 		self.world_ = pm.World(xSz=self.xSz_, ySz=self.ySz_)
 		#Add the walls
-		self.add_walls()
+		walls = self.add_walls()
 		#Add the balls
-		self.add_balls()
+		ballPos = self.add_balls()
 		#Create physics simulation
 		model = pm.Dynamics(self.world_)
 		#Apply initial forces and return the result. 	
-		return self.apply_force(model)	
+		model, fs =  self.apply_force(model)	
+		return model, fs, ballPos, walls
 
 	#This is mostly due to legacy reasons. 
 	def add_rectangular_walls(self, fColor=pm.Color(1.0, 0.0, 0.0)):
@@ -125,17 +142,21 @@ class DataSaver:
 		topYmx = self.ySz_ - (vLen + self.wth_)
 		xLeft = np.floor(np.random.rand() * topXmx)
 		yTop  = np.floor(np.random.rand() * topYmx)	
+		walls  = self._create_walls(xLeft, yTop, (0, 90, 180), (hLen - self.wth_, vLen, hLen - self.wth_), 
+															 fColor=fColor)
+	
 		#Define the walls
-		wallHorDef = pm.WallDef(sz=gm.Point(hLen, self.wth_), fColor=fColor)
-		wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, vLen), fColor=fColor)
-		#Add the walls
-		self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
-		self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft + hLen - self.wth_, yTop))
-		self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
-		self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + vLen))
-		self.pts = [gm.Point(xLeft, yTop)]
-		self.whl_, self.wvl_ = hLen, vLen
+		#wallHorDef = pm.WallDef(sz=gm.Point(hLen, self.wth_), fColor=fColor)
+		#wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, vLen), fColor=fColor)
+		#self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
+		#self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft + hLen - self.wth_, yTop))
+		#self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
+		#self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + vLen))
+		#self.pts = [gm.Point(xLeft, yTop)]
+		#self.whl_, self.wvl_ = hLen, vLen
+		return walls
 
+	##
 	def sample_walls(self):
 		#For adding diagonal walls
 		#1. Estimate the x and y extents of the wall. 
@@ -169,31 +190,35 @@ class DataSaver:
 		yLeft    = yLeftMin  + np.floor(np.random.rand() * (yLeftMax - yLeftMin))	
 		return xLeft, yLeft, wTheta, hLen	
 
-	def add_walls(self):
-		if self.isRect_:
-			self.add_rectangular_walls()
-			return
-		xLeft, yLeft, wTheta, hLen = self.sample_walls()
-		#Get the coordinates for creating the boundaries.  
+	##
+	def _create_walls(self, xLeft, yLeft, thetas, wLens, fColor):
+		theta1, theta2, theta3 = thetas
+		wLen1,  wLen2,  wLen3  = wLens
 		pt1      = gm.Point(xLeft, yLeft)
-		dir1     = gm.theta2dir(-wTheta)
-		pt2      = pt1 + (hLen * dir1)
-		dir2     = gm.theta2dir(wTheta)
-		pt3      = pt2 + (hLen * dir2)
-		theta3   = (180 - wTheta)
+		dir1     = gm.theta2dir(theta1)
+		pt2      = pt1 + (wLen1 * dir1)
+		dir2     = gm.theta2dir(theta2)
+		pt3      = pt2 + (wLen2 * dir2)
 		dir3     = gm.theta2dir(theta3)
-		pt4      = pt3 + (hLen * dir3)
+		pt4      = pt3 + (wLen3 * dir3)
 		pts      = [pt1, pt2, pt3, pt4]
 		print "Points: ", pt1, pt2, pt3, pt4
-		walls    = pm.create_cage(pts, wThick = self.wth_)	
-		for w in walls:
-			self.world_.add_object(w)
-
+		walls    = pm.create_cage(pts, wThick = self.wth_, fColor=fColor)	
 		#Get the lines within which the balls need to be added. 
 		self.pts    = pts
 		self.lines_ = []
+		for w in walls:
+			self.world_.add_object(w)
 		for i in range(len(pts)):
 			self.lines_.append(gm.Line(pts[i], pts[np.mod(i+1, len(pts))]))		
+		return walls
+
+	def add_walls(self, fColor=pm.Color(1.0, 0.0, 0.0)):
+		if self.isRect_:
+			return self.add_rectangular_walls(fColor=fColor)
+		xLeft, yLeft, wTheta, hLen = self.sample_walls()
+		walls = self._create_walls(xLeft, yLeft, (-wTheta, wTheta, 180-wTheta), (hLen, hLen, hLen))
+		return walls		
 
 
 	def find_point_within_lines(self, minDist):
@@ -221,23 +246,25 @@ class DataSaver:
 		for i in range(self.numBalls_):
 			placeFlag = True
 			while placeFlag:
-				#Randomly sample the radius of the ball
-				r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
-				bDef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
-				#Find a position to keep the ball
-				if self.isRect_:
-					xLeft, yTop = self.pts[0].x_asint(), self.pts[0].y_asint()
-					#xMn  = xLeft + 2 * r + self.wth_
-					#yMn  = yTop  + 2 * r + self.wth_
-					#xMx  = xLeft + self.whl_ - self.wth_ - 2 * r
-					#yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
-					xMn  = xLeft + r + self.wth_ + 2 #Give some margin
-					yMn  = yTop  + r + self.wth_ + 2
-					xMx  = xLeft + self.whl_ - self.wth_ - r - 2
-					yMx  = yTop  + self.wvl_ - self.wth_ - r - 2
-					xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
-					yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
-				else:
+					#Randomly sample the radius of the ball
+					r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
+					bDef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
+					#Find a position to keep the ball
+					'''
+					if self.isRect_:
+						xLeft, yTop = self.pts[0].x_asint(), self.pts[0].y_asint()
+						#xMn  = xLeft + 2 * r + self.wth_
+						#yMn  = yTop  + 2 * r + self.wth_
+						#xMx  = xLeft + self.whl_ - self.wth_ - 2 * r
+						#yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
+						xMn  = xLeft + r + self.wth_ + 2 #Give some margin
+						yMn  = yTop  + r + self.wth_ + 2
+						xMx  = xLeft + self.whl_ - self.wth_ - r - 2
+						yMx  = yTop  + self.wvl_ - self.wth_ - r - 2
+						xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
+						yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
+					else:
+					'''
 					findFlag = True
 					count    = 0
 					while findFlag:
@@ -250,18 +277,19 @@ class DataSaver:
 							pdb.set_trace()
 					print "Ball at (%f, %f), dist: %f" % (pt.x(), pt.y(), md)
 					xLoc, yLoc = pt.x_asint(), pt.y_asint()	
-				pt = gm.Point(xLoc, yLoc)
-				#Determine if the ball can be placed at the chosen position or not
-				isOk = True
-				for j in range(i):
-					dist = pt.distance(allPos[j])
-					print "Placement Dist:", dist
-					isOk = isOk and dist > (allR[j] + r)
-				if isOk:
-					placeFlag = False
-					allR.append(r)
-					allPos.append(pt)
+					pt = gm.Point(xLoc, yLoc)
+					#Determine if the ball can be placed at the chosen position or not
+					isOk = True
+					for j in range(i):
+						dist = pt.distance(allPos[j])
+						print "Placement Dist:", dist
+						isOk = isOk and dist > (allR[j] + r)
+					if isOk:
+						placeFlag = False
+						allR.append(r)
+						allPos.append(pt)
 			self.world_.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
+			return allPos
 
 	#Apply intial forces on the balls
 	def apply_force(self, model):
@@ -304,11 +332,11 @@ def save_nonrect_arena_train(numSeq=10000, numBalls=1):
 	sv.save(numSeq=numSeq)	
 
 
-def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1):
+def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None):
 	sv = DataSaver(wThick=30, isRect=True, mnForce=3e+4, mxForce=8e+4, 
 								 mnWLen=300, mxWLen=550, mnSeqLen=10, mxSeqLen=200,
 								 numBalls=numBalls, mnBallSz=25, mxBallSz=25, arenaSz=700,
-								 oppForce=oppForce)
+								 oppForce=oppForce, svPrefix=svPrefix)
 	sv.save(numSeq=numSeq)	
 
 def save_multishape_rect_arena(numSeq=1000, numBalls=1, oppForce=False):
