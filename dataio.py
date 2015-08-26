@@ -23,7 +23,7 @@ class DataSaver:
 							 mnForce=1e+3, mxForce=1e+6, wThick=30,
 							 isRect=True, wTheta=30, mxWLen=600, mnWLen=200,
 							 arenaSz=667, oppForce=False,
-							 svPrefix=None):
+							 svPrefix=None, randSeed=None, **kwargs):
 		'''
 			isRect  : If the walls need to be rectangular
 			wTheta  : If the walls are NOT rectangular then at what angles should they be present.
@@ -75,11 +75,16 @@ class DataSaver:
 		if not isinstance(wTheta, list):
 			wTheta = [wTheta]
 		self.wTheta_   = wTheta	
+		if randSeed is None:
+			self.rand_ = np.random.RandomState()
+		else:
+			self.rand_ = np.random.RandomState(randSeed)
+
 
 	def save(self, numSeq=10):
 		for i in range(numSeq):
 			print i
-			seqLen = int(self.mnSeqLen_ + np.random.rand() * (self.mxSeqLen_ - self.mnSeqLen_))
+			seqLen = int(self.mnSeqLen_ + self.rand_.rand() * (self.mxSeqLen_ - self.mnSeqLen_))
 			self.seqLen_ = seqLen
 			seqDir = self.seqDir_ % i
 			if not os.path.exists(seqDir):
@@ -107,10 +112,10 @@ class DataSaver:
 			force[st,0], force[en,0] = fb.x(), fb.y()
 			print fb 
 		for i in range(self.seqLen_):
+			model.step()
 			im = model.generate_image()
 			svImFile = imFile % i
 			scm.imsave(svImFile, im)				
-			model.step()
 			for j in range(self.numBalls_):
 				ballName = 'ball-%d' % j
 				ball     = model.get_object(ballName)
@@ -118,6 +123,20 @@ class DataSaver:
 				position[2*j,   i] = pos.x()
 				position[2*j+1, i] = pos.y()
 		sio.savemat(dataFile, {'force': force, 'position': position})	
+
+	def fetch(self):
+		seqLen = int(self.mnSeqLen_ + self.rand_.rand() * (self.mxSeqLen_ - self.mnSeqLen_))
+		self.seqLen_ = seqLen
+		model, f, ballPos, walls = self.generate_model()
+		force    = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
+		position = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
+		imList = []
+		for i in range(self.seqLen_):
+			model.step()
+			im = model.generate_image()
+			imList.append(im)
+		return imList
+		
 
 	def generate_model(self):
 		#Get the coordinates of the top point
@@ -133,15 +152,17 @@ class DataSaver:
 		model, fs =  self.apply_force(model)	
 		return model, fs, ballPos, walls
 
+	
+
 	#This is mostly due to legacy reasons. 
 	def add_rectangular_walls(self, fColor=pm.Color(1.0, 0.0, 0.0)):
 		#Define the extents within which walls can be put. 
-		hLen   = np.floor(self.wlmn_ + np.random.rand() * (self.wlmx_ - self.wlmn_))
-		vLen   = np.floor(self.wlmn_ + np.random.rand() * (self.wlmx_ - self.wlmn_))
+		hLen   = np.floor(self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_))
+		vLen   = np.floor(self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_))
 		topXmx = self.xSz_ - (hLen + self.wth_)
 		topYmx = self.ySz_ - (vLen + self.wth_)
-		xLeft = np.floor(np.random.rand() * topXmx)
-		yTop  = np.floor(np.random.rand() * topYmx)	
+		xLeft = np.floor(self.rand_.rand() * topXmx)
+		yTop  = np.floor(self.rand_.rand() * topYmx)	
 		walls  = self._create_walls(xLeft, yTop, (0, 90, 180), (hLen - self.wth_, vLen, hLen - self.wth_), 
 															 fColor=fColor)
 	
@@ -162,10 +183,10 @@ class DataSaver:
 		#1. Estimate the x and y extents of the wall. 
 		#2. Find the appropriate starting position based on that
 		#Sample the theta
-		perm = np.random.permutation(len(self.wTheta_))
+		perm = self.rand_.permutation(len(self.wTheta_))
 		wTheta = self.wTheta_[perm[0]]
 		rad  = (wTheta * np.pi)/180.0
-		hLen   = self.wlmn_ + np.random.rand() * (self.wlmx_ - self.wlmn_)
+		hLen   = self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_)
 		if wTheta == 90:
 			xLen = hLen
 			yLen = hLen
@@ -186,8 +207,8 @@ class DataSaver:
 			return self.sample_walls()
 		if xLeftMax < xLeftMin or yLeftMax < yLeftMin:
 			return self.sample_walls()
-		xLeft    = xLeftMin + np.floor(np.random.rand() * (xLeftMax - xLeftMin))
-		yLeft    = yLeftMin  + np.floor(np.random.rand() * (yLeftMax - yLeftMin))	
+		xLeft    = xLeftMin + np.floor(self.rand_.rand() * (xLeftMax - xLeftMin))
+		yLeft    = yLeftMin  + np.floor(self.rand_.rand() * (yLeftMax - yLeftMin))	
 		return xLeft, yLeft, wTheta, hLen	
 
 	##
@@ -217,7 +238,8 @@ class DataSaver:
 		if self.isRect_:
 			return self.add_rectangular_walls(fColor=fColor)
 		xLeft, yLeft, wTheta, hLen = self.sample_walls()
-		walls = self._create_walls(xLeft, yLeft, (-wTheta, wTheta, 180-wTheta), (hLen, hLen, hLen))
+		walls = self._create_walls(xLeft, yLeft, (-wTheta, wTheta, 180-wTheta),
+							 (hLen, hLen, hLen), fColor=fColor)
 		return walls		
 
 
@@ -226,8 +248,8 @@ class DataSaver:
 			Find a point within the lines which is atleast minDist
 			from all the boundaries. 
 		'''		
-		x = int(np.round(self.pts[0].x() + np.random.rand()*(self.pts[2].x() - self.pts[0].x())))
-		y = int(np.round(self.pts[1].y() + np.random.rand()*(self.pts[3].y() - self.pts[1].y())))
+		x = int(np.round(self.pts[0].x() + self.rand_.rand()*(self.pts[2].x() - self.pts[0].x())))
+		y = int(np.round(self.pts[1].y() + self.rand_.rand()*(self.pts[3].y() - self.pts[1].y())))
 		pt = gm.Point(x,y)
 		isInside = True
 		dist = []
@@ -247,7 +269,7 @@ class DataSaver:
 			placeFlag = True
 			while placeFlag:
 					#Randomly sample the radius of the ball
-					r    = int(np.floor(self.bmn_ + np.random.rand() * (self.bmx_ - self.bmn_))) 
+					r    = int(np.floor(self.bmn_ + self.rand_.rand() * (self.bmx_ - self.bmn_))) 
 					bDef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
 					#Find a position to keep the ball
 					'''
@@ -261,8 +283,8 @@ class DataSaver:
 						yMn  = yTop  + r + self.wth_ + 2
 						xMx  = xLeft + self.whl_ - self.wth_ - r - 2
 						yMx  = yTop  + self.wvl_ - self.wth_ - r - 2
-						xLoc = int(np.floor(xMn + (xMx - xMn) * np.random.rand()))
-						yLoc = int(np.floor(yMn + (yMx - yMn) * np.random.rand()))
+						xLoc = int(np.floor(xMn + (xMx - xMn) * self.rand_.rand()))
+						yLoc = int(np.floor(yMn + (yMx - yMn) * self.rand_.rand()))
 					else:
 					'''
 					findFlag = True
@@ -289,7 +311,7 @@ class DataSaver:
 						allR.append(r)
 						allPos.append(pt)
 			self.world_.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
-			return allPos
+		return allPos
 
 	#Apply intial forces on the balls
 	def apply_force(self, model):
@@ -301,17 +323,17 @@ class DataSaver:
 				ballName2 = 'ball-%d' % np.mod(i+1,2)
 				pos2      = self.world_.get_object_position(ballName2)
 				ff        = pos2 - pos1 
-				mag       = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
+				mag       = self.fmn_ + np.floor(self.rand_.rand()*(self.fmx_ - self.fmn_))			
 				ff.make_unit_norm()
 				ff.scale(mag)
 				fx, fy = ff.x(), ff.y()
 				print fx, fy
 			else:
-				fx = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
-				fy = self.fmn_ + np.floor(np.random.rand()*(self.fmx_ - self.fmn_))			
-				if np.random.rand() > 0.5:
+				fx = self.fmn_ + np.floor(self.rand_.rand()*(self.fmx_ - self.fmn_))			
+				fy = self.fmn_ + np.floor(self.rand_.rand()*(self.fmx_ - self.fmn_))			
+				if self.rand_.rand() > 0.5:
 					fx = -fx
-				if np.random.rand() > 0.5:
+				if self.rand_.rand() > 0.5:
 					fy = -fy
 			f  = gm.Point(fx, fy)
 			model.apply_force(ballName, f, forceT=1.0) 
@@ -324,19 +346,26 @@ def save_nonrect_arena_val(numSeq=100):
 								 mnSeqLen=10, mxSeqLen=100, wTheta=[23, 38, 45, 53])
 	sv.save(numSeq=numSeq)	
 
-def save_nonrect_arena_train(numSeq=10000, numBalls=1):
-	drName = '/data1/pulkitag/projPhysics/'
-	sv = DataSaver(rootPath=drName, wThick=30, isRect=False, mnForce=3e+4, mxForce=8e+4, 
-								 mnWLen=500, mxWLen=800, numBalls=numBalls,
-								 mnSeqLen=10, mxSeqLen=200, mnBallSz=25, mxBallSz=25, wTheta=[30, 60], arenaSz=1600)
+def save_nonrect_arena_train(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None, 
+														 mnWLen=500, mxWLen=800, arenaSz=1600, mnForce=3e+4, 
+														 mxForce=8e+4):
+	drName = '/work5/pulkitag/projPhysics/'
+	sv = DataSaver(rootPath=drName, wThick=30, isRect=False, mnForce=mnForce, mxForce=mxForce, 
+								 mnWLen=mnWLen, mxWLen=mxWLen, numBalls=numBalls,
+								 mnSeqLen=10, mxSeqLen=200, mnBallSz=25, mxBallSz=25, wTheta=[30, 60],
+								 arenaSz=arenaSz, svPrefix=svPrefix)
 	sv.save(numSeq=numSeq)	
 
 
-def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None):
-	sv = DataSaver(wThick=30, isRect=True, mnForce=3e+4, mxForce=8e+4, 
-								 mnWLen=300, mxWLen=550, mnSeqLen=10, mxSeqLen=200,
-								 numBalls=numBalls, mnBallSz=25, mxBallSz=25, arenaSz=700,
-								 oppForce=oppForce, svPrefix=svPrefix)
+def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None,
+										mnForce=3e+4, mxForce=8e+4, mnWLen=300, mxWLen=550, arenaSz=700,
+										mnSeqLen=10, mxSeqLen=200):
+
+	drName = '/data1/pulkitag/projPhysics/'
+	sv = DataSaver(wThick=30, isRect=True, mnForce=mnForce, mxForce=mxForce, 
+								 mnWLen=mnWLen, mxWLen=mxWLen, mnSeqLen=mnSeqLen, mxSeqLen=mxSeqLen,
+								 numBalls=numBalls, mnBallSz=25, mxBallSz=25, arenaSz=arenaSz,
+								 oppForce=oppForce, svPrefix=svPrefix, rootPath=drName)
 	sv.save(numSeq=numSeq)	
 
 def save_multishape_rect_arena(numSeq=1000, numBalls=1, oppForce=False):

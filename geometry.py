@@ -2,6 +2,7 @@ import numpy as np
 import copy
 import pdb
 import math
+import pdb
 
 TOL = 1e-08 #1e-06 works fine.
 
@@ -405,8 +406,10 @@ class Circle:
 		p11 = p1 - p1
 		p21 = p2 - p1
 		R     = r1 + r2
-		dBall = p21.distance(p11) + 1e-6
+		dBall = p21.distance(p11)
 		#print "Ball Positions", p11, p21, dBall
+		if dBall >= (R-0.1) and dBall <=R:
+			dBall = (R - dBall) + dBall + 1e-6
 		assert dBall >= R, "dball: %f, R: %f" % (dBall, R) 
 		#Make a big circle and determine if there will be a collision
 		bigC = Circle(R, p11)
