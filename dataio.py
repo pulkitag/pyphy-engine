@@ -15,15 +15,16 @@ import primitives as pm
 import geometry as gm
 import physics as phy
 import os
+from os import path as osp
 
 class DataSaver:	
 	def __init__(self, rootPath='/work5/pulkitag/projPhysics', numBalls=1,
 							 mnBallSz=15, mxBallSz=35,
-							 mnSeqLen=10, mxSeqLen=100, 
+							 mnSeqLen=40, mxSeqLen=100, 
 							 mnForce=1e+3, mxForce=1e+6, wThick=30,
 							 isRect=True, wTheta=30, mxWLen=600, mnWLen=200,
 							 arenaSz=667, oppForce=False,
-							 svPrefix=None, randSeed=None, **kwargs):
+							 svPrefix=None, randSeed=None, verbose=0, **kwargs):
 		'''
 			isRect  : If the walls need to be rectangular
 			wTheta  : If the walls are NOT rectangular then at what angles should they be present.
@@ -32,6 +33,7 @@ class DataSaver:
 			arenaSz : Size of the arena 
 			svPrefix: Prefix in the file names for saving the data 
 		'''
+		#print (rootPath)
 		#The name of the experiment. 
 		self.expStr_   = 'aSz%d_wLen%d-%d_nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d-%d_wTh%d' % (arenaSz,
 										  mnWLen, mxWLen, numBalls, mnBallSz, mxBallSz, mnForce, mxForce,
@@ -49,6 +51,7 @@ class DataSaver:
 		if oppForce:
 			self.expStr_   = self.expStr_ + '_oppFrc'	
 
+		#pdb.set_trace()
 		#Setup directories.
 		self.dirName_  = os.path.join(rootPath, self.expStr_)
 		if not os.path.exists(self.dirName_):
@@ -72,6 +75,7 @@ class DataSaver:
 		self.wth_      = wThick
 		self.isRect_   = isRect
 		self.oppForce_ = oppForce
+		self.verbose_  = verbose
 		if not isinstance(wTheta, list):
 			wTheta = [wTheta]
 		self.wTheta_   = wTheta	
@@ -124,18 +128,49 @@ class DataSaver:
 				position[2*j+1, i] = pos.y()
 		sio.savemat(dataFile, {'force': force, 'position': position})	
 
-	def fetch(self):
+	def fetch(self, cropSz=None):
 		seqLen = int(self.mnSeqLen_ + self.rand_.rand() * (self.mxSeqLen_ - self.mnSeqLen_))
 		self.seqLen_ = seqLen
 		model, f, ballPos, walls = self.generate_model()
-		force    = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
-		position = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
-		imList = []
-		for i in range(self.seqLen_):
+		force    = np.zeros((2 * self.numBalls_, self.seqLen_ - 1)).astype(np.float32)
+		position = np.zeros((2 * self.numBalls_, self.seqLen_ - 1)).astype(np.float32)
+		velocity = np.zeros((2 * self.numBalls_, self.seqLen_ - 1)).astype(np.float32)
+		imList  = []
+		imBalls = []
+		for b in range(self.numBalls_):
+			imBalls.append([])
+			fb = f[b]
+			st, en = 2*b, 2*b + 1
+			force[st,0], force[en,0] = fb.x(), fb.y()
+		for i in range(self.seqLen_ - 1):
 			model.step()
 			im = model.generate_image()
+			for j in range(self.numBalls_):
+				ballName = 'ball-%d' % j
+				ball     = model.get_object(ballName)
+				pos      = ball.get_position()
+				vel      = ball.get_velocity()
+				position[2*j,   i] = pos.x()
+				position[2*j+1, i] = pos.y()
+				velocity[2*j,   i] = vel.x()
+				velocity[2*j+1, i] = vel.y()
+				xMid, yMid = pos.x(), pos.y()
+				if cropSz is not None:
+					imBall = 255 * np.ones((cropSz, cropSz,3)).astype(np.uint8)
+					x1, x2 = max(0, int(xMid - cropSz/2.0)), min(self.xSz_, int(xMid + cropSz/2.0))
+					y1, y2 = max(0, int(yMid - cropSz/2.0)), min(self.ySz_, int(yMid + cropSz/2.0))
+					xSz, ySz = x2 - x1, y2 - y1
+					imX1 = int(cropSz/2.0) - int(np.floor(xSz/2.0))
+					imX2 = int(cropSz/2.0) + int(np.ceil(xSz/2.0))
+					imY1 = int(cropSz/2.0) - int(np.floor(ySz/2.0))
+					imY2 = int(cropSz/2.0) + int(np.ceil(ySz/2.0))
+					imBall[imY1:imY2,imX1:imX2,:] = im[y1:y2, x1:x2,0:3]
+					imBalls[j].append(imBall)
 			imList.append(im)
-		return imList
+		if cropSz is None:
+			return imList
+		else:
+			return imBalls, force, velocity 
 		
 
 	def generate_model(self):
@@ -223,7 +258,8 @@ class DataSaver:
 		dir3     = gm.theta2dir(theta3)
 		pt4      = pt3 + (wLen3 * dir3)
 		pts      = [pt1, pt2, pt3, pt4]
-		print "Points: ", pt1, pt2, pt3, pt4
+		if self.verbose_ > 0:
+			print ("Points: ", pt1, pt2, pt3, pt4)
 		walls    = pm.create_cage(pts, wThick = self.wth_, fColor=fColor)	
 		#Get the lines within which the balls need to be added. 
 		self.pts    = pts
@@ -297,14 +333,16 @@ class DataSaver:
 						if count >= 500:
 							print "Failed to find a point to place the ball"
 							pdb.set_trace()
-					print "Ball at (%f, %f), dist: %f" % (pt.x(), pt.y(), md)
+					if self.verbose_ > 0:
+						print ("Ball at (%f, %f), dist: %f" % (pt.x(), pt.y(), md))
 					xLoc, yLoc = pt.x_asint(), pt.y_asint()	
 					pt = gm.Point(xLoc, yLoc)
 					#Determine if the ball can be placed at the chosen position or not
 					isOk = True
 					for j in range(i):
 						dist = pt.distance(allPos[j])
-						print "Placement Dist:", dist
+						if self.verbose_ > 0:
+							print ("Placement Dist:", dist)
 						isOk = isOk and dist > (allR[j] + r)
 					if isOk:
 						placeFlag = False
@@ -327,14 +365,22 @@ class DataSaver:
 				ff.make_unit_norm()
 				ff.scale(mag)
 				fx, fy = ff.x(), ff.y()
-				print fx, fy
+				if self.verbose_ > 0:
+					print (fx, fy)
+				print ('LOC 1')
 			else:
-				fx = self.fmn_ + np.floor(self.rand_.rand()*(self.fmx_ - self.fmn_))			
-				fy = self.fmn_ + np.floor(self.rand_.rand()*(self.fmx_ - self.fmn_))			
+				rnd1, rnd2 = self.rand_.rand(), self.rand_.rand()
+				fDiff      = self.fmx_ - self.fmn_
+				print ('LOC 2 - %f, %f' % (rnd1 * fDiff, rnd2 * fDiff))
+				print ('Min/Max - %f, %f' % (self.fmx_, self.fmn_))
+				#Sample magnitude
+				fMag   = self.fmn_ + np.floor(rnd1 * (self.fmx_ - self.fmn_))
+				#Sample Theta
+				fTheta = rnd1 * np.pi 			
 				if self.rand_.rand() > 0.5:
-					fx = -fx
-				if self.rand_.rand() > 0.5:
-					fy = -fy
+					fTheta = -fTheta
+				fx, fy = fMag * np.cos(fTheta), fMag * np.sin(fTheta)
+			print ('FORCE - FX: %f, FY: %f' % (fx, fy))
 			f  = gm.Point(fx, fy)
 			model.apply_force(ballName, f, forceT=1.0) 
 			fs.append(f)
@@ -361,7 +407,7 @@ def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None,
 										mnForce=3e+4, mxForce=8e+4, mnWLen=300, mxWLen=550, arenaSz=700,
 										mnSeqLen=10, mxSeqLen=200):
 
-	drName = '/data1/pulkitag/projPhysics/'
+	drName = '/data0/pulkitag/projPhysics/'
 	sv = DataSaver(wThick=30, isRect=True, mnForce=mnForce, mxForce=mxForce, 
 								 mnWLen=mnWLen, mxWLen=mxWLen, mnSeqLen=mnSeqLen, mxSeqLen=mxSeqLen,
 								 numBalls=numBalls, mnBallSz=25, mxBallSz=25, arenaSz=arenaSz,
@@ -374,6 +420,22 @@ def save_multishape_rect_arena(numSeq=1000, numBalls=1, oppForce=False):
 								 mxForce=1e+5, mnWLen=400, mxWLen=400,
 								 mnSeqLen=40, mxSeqLen=40, mnBallSz=25, mxBallSz=25, oppForce=oppForce)
 	sv.save(numSeq=numSeq)	
+
+
+def stats_force():
+	#dataDir = '/work5/pulkitag/projPhysics/trainV2-aSz700_wLen300-550_nb1_bSz25-25_f3e+04-8e+04_sLen10-200_wTh30/'
+	dataDir = '/work5/pulkitag/projPhysics/trainV2-aSz700_wLen200-550_nb2_bSz25-25_f8e+03-5e+04_sLen10-200_wTh30_oppFrc'
+	theta = []
+	for i in range(10000):
+		if np.mod(i,1000)==1:
+			print(i)
+		seqFolder = osp.join(dataDir, 'seq%06d' % i)
+		wFile     = osp.join(seqFolder, 'data.mat')
+		data      = sio.loadmat(wFile)
+		force     = data['force'][:,0]
+		theta.append(np.arctan2(float(force[0]), float(force[1])))
+	return theta
+		
 
 
 def delete_garbage():
