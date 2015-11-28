@@ -83,7 +83,7 @@ class DataSaver:
 			self.rand_ = np.random.RandomState()
 		else:
 			self.rand_ = np.random.RandomState(randSeed)
-
+	print ('DATAIO SETUP DONE')
 
 	def save(self, numSeq=10):
 		for i in range(numSeq):
@@ -128,7 +128,7 @@ class DataSaver:
 				position[2*j+1, i] = pos.y()
 		sio.savemat(dataFile, {'force': force, 'position': position})	
 
-	def fetch(self, cropSz=None):
+	def fetch(self, cropSz=None, procSz=None):
 		seqLen = int(self.mnSeqLen_ + self.rand_.rand() * (self.mxSeqLen_ - self.mnSeqLen_))
 		self.seqLen_ = seqLen
 		model, f, ballPos, walls = self.generate_model()
@@ -154,9 +154,24 @@ class DataSaver:
 				position[2*j+1, i] = pos.y()
 				velocity[2*j,   i] = vel.x()
 				velocity[2*j+1, i] = vel.y()
-				xMid, yMid = pos.x(), pos.y()
+				#print (vel.x(), vel.y())
+				xMid, yMid = round(pos.x()), round(pos.y())
+				#xMid, yMid = pos.x(), pos.y()
 				if cropSz is not None:
 					imBall = 255 * np.ones((cropSz, cropSz,3)).astype(np.uint8)
+					x1, x2 = max(0, xMid - cropSz/2.0), min(self.xSz_, xMid + cropSz/2.0)
+					y1, y2 = max(0, yMid - cropSz/2.0), min(self.ySz_, yMid + cropSz/2.0)
+					#print xMid, x1, x2, cropSz
+					#xSz, ySz = x2 - x1, y2 - y1
+					imX1 = int(round(cropSz/2.0  - (xMid - x1)))
+					imX2 = int(round(cropSz/2.0  + (x2 - xMid)))
+					imY1 = int(round(cropSz/2.0  - (yMid - y1)))
+					imY2 = int(round(cropSz/2.0  + (y2 - yMid)))
+					imBall[imY1:imY2,imX1:imX2,:] = im[int(y1):int(y2), int(x1):int(x2),0:3]
+					position[2*j, i] = position[2*j, i] - int(x1) + imX1 
+					position[2*j+1, i] = position[2*j+1, i] - int(y1) + imY1 
+
+					'''
 					x1, x2 = max(0, int(xMid - cropSz/2.0)), min(self.xSz_, int(xMid + cropSz/2.0))
 					y1, y2 = max(0, int(yMid - cropSz/2.0)), min(self.ySz_, int(yMid + cropSz/2.0))
 					xSz, ySz = x2 - x1, y2 - y1
@@ -165,103 +180,112 @@ class DataSaver:
 					imY1 = int(cropSz/2.0) - int(np.floor(ySz/2.0))
 					imY2 = int(cropSz/2.0) + int(np.ceil(ySz/2.0))
 					imBall[imY1:imY2,imX1:imX2,:] = im[y1:y2, x1:x2,0:3]
+					'''
+					
+					if procSz is not None:
+						posScale  = float(procSz)/float(cropSz)
+						imBall = scm.imresize(imBall, (procSz, procSz))
+						position[2*j, i]   = position[2*j, i] * posScale
+						position[2*j+1, i] = position[2*j+1, i] * posScale
+						velocity[2*j, i]   = velocity[2*j, i] * posScale
+						velocity[2*j+1, i] = velocity[2*j+1, i] * posScale
 					imBalls[j].append(imBall)
 			imList.append(im)
 		if cropSz is None:
 			return imList
 		else:
-			return imBalls, force, velocity 
+			return imBalls, force, velocity, position 
 		
 
 	def generate_model(self):
-		#Get the coordinates of the top point
-		#Create the world
+		#get the coordinates of the top point
+		#create the world
 		self.world_ = pm.World(xSz=self.xSz_, ySz=self.ySz_)
-		#Add the walls
+		#add the walls
 		walls = self.add_walls()
-		#Add the balls
-		ballPos = self.add_balls()
-		#Create physics simulation
+		#add the balls
+		ballpos = self.add_balls()
+		#create physics simulation
 		model = pm.Dynamics(self.world_)
-		#Apply initial forces and return the result. 	
+		#apply initial forces and return the result. 	
 		model, fs =  self.apply_force(model)	
-		return model, fs, ballPos, walls
+		return model, fs, ballpos, walls
 
 	
 
-	#This is mostly due to legacy reasons. 
+	#this is mostly due to legacy reasons. 
 	def add_rectangular_walls(self, fColor=pm.Color(1.0, 0.0, 0.0)):
-		#Define the extents within which walls can be put. 
-		hLen   = np.floor(self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_))
-		vLen   = np.floor(self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_))
-		topXmx = self.xSz_ - (hLen + self.wth_)
-		topYmx = self.ySz_ - (vLen + self.wth_)
-		xLeft = np.floor(self.rand_.rand() * topXmx)
-		yTop  = np.floor(self.rand_.rand() * topYmx)	
-		walls  = self._create_walls(xLeft, yTop, (0, 90, 180), (hLen - self.wth_, vLen, hLen - self.wth_), 
+		#define the extents within which walls can be put. 
+		hlen   = np.floor(self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_))
+		vlen   = np.floor(self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_))
+		topxmx = self.xSz_ - (hlen + self.wth_)
+		topymx = self.ySz_ - (vlen + self.wth_)
+		xleft = np.floor(self.rand_.rand() * topxmx)
+		ytop  = np.floor(self.rand_.rand() * topymx)	
+		walls  = self._create_walls(xleft, ytop, (0, 90, 180), (hlen - self.wth_, vlen, hlen - self.wth_), 
 															 fColor=fColor)
 	
-		#Define the walls
-		#wallHorDef = pm.WallDef(sz=gm.Point(hLen, self.wth_), fColor=fColor)
-		#wallVerDef = pm.WallDef(sz=gm.Point(self.wth_, vLen), fColor=fColor)
-		#self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft, yTop))
-		#self.world_.add_object(wallVerDef, initPos=gm.Point(xLeft + hLen - self.wth_, yTop))
-		#self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop))
-		#self.world_.add_object(wallHorDef, initPos=gm.Point(xLeft, yTop + vLen))
-		#self.pts = [gm.Point(xLeft, yTop)]
-		#self.whl_, self.wvl_ = hLen, vLen
+		#define the walls
+		#wallhordef = pm.walldef(sz=gm.Point(hlen, self.wth_), fColor=fColor)
+		#wallverdef = pm.walldef(sz=gm.Point(self.wth_, vlen), fColor=fColor)
+		#self.world_.add_object(wallverdef, initpos=gm.Point(xleft, ytop))
+		#self.world_.add_object(wallverdef, initpos=gm.Point(xleft + hlen - self.wth_, ytop))
+		#self.world_.add_object(wallhordef, initpos=gm.Point(xleft, ytop))
+		#self.world_.add_object(wallhordef, initpos=gm.Point(xleft, ytop + vlen))
+		#self.pts = [gm.Point(xleft, ytop)]
+		#self.whl_, self.wvl_ = hlen, vlen
 		return walls
 
 	##
 	def sample_walls(self):
-		#For adding diagonal walls
-		#1. Estimate the x and y extents of the wall. 
-		#2. Find the appropriate starting position based on that
-		#Sample the theta
+		#for adding diagonal walls
+		#1. estimate the x and y extents of the wall. 
+		#2. find the appropriate starting position based on that
+		#sample the theta
 		perm = self.rand_.permutation(len(self.wTheta_))
-		wTheta = self.wTheta_[perm[0]]
-		rad  = (wTheta * np.pi)/180.0
-		hLen   = self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_)
-		if wTheta == 90:
-			xLen = hLen
-			yLen = hLen
+		wtheta = self.wTheta_[perm[0]]
+		rad  = (wtheta * np.pi)/180.0
+		hlen   = self.wlmn_ + self.rand_.rand() * (self.wlmx_ - self.wlmn_)
+		if wtheta == 90:
+			xlen = hlen
+			ylen = hlen
 		else:
-			xLen = hLen * np.cos(rad)
-			yLen = hLen * np.sin(rad)
-		xExtent = 2 * xLen +  2 * self.wth_
-		yExtent = 2 * yLen +  2 * self.wth_
-		xLeftMin = self.wth_  
-		xLeftMax = self.xSz_ - xExtent
-		yLeftMin  = yLen + self.wth_
-		if wTheta == 90:
-			yLeftMax = self.ySz_ - self.wth_
+			xlen = hlen * np.cos(rad)
+			ylen = hlen * np.sin(rad)
+		xextent = 2 * xlen +  2 * self.wth_
+		yextent = 2 * ylen +  2 * self.wth_
+		xleftmin = self.wth_  
+		xleftmax = self.xSz_ - xextent
+		yleftmin  = ylen + self.wth_
+		if wtheta == 90:
+			yleftmax = self.ySz_ - self.wth_
 		else:
-			yLeftMax  = self.ySz_ - (yLen + self.wth_)
-		#Keep sampling until the appropriate size has been found. 
-		if xLeftMin <= 0 or yLeftMin <=0:
+			yleftmax  = self.ySz_ - (ylen + self.wth_)
+		#keep sampling until the appropriate size has been found. 
+		if xleftmin <= 0 or yleftmin <=0:
 			return self.sample_walls()
-		if xLeftMax < xLeftMin or yLeftMax < yLeftMin:
+		if xleftmax < xleftmin or yleftmax < yleftmin:
 			return self.sample_walls()
-		xLeft    = xLeftMin + np.floor(self.rand_.rand() * (xLeftMax - xLeftMin))
-		yLeft    = yLeftMin  + np.floor(self.rand_.rand() * (yLeftMax - yLeftMin))	
-		return xLeft, yLeft, wTheta, hLen	
+		xleft    = xleftmin + np.floor(self.rand_.rand() * (xleftmax - xleftmin))
+		yleft    = yleftmin  + np.floor(self.rand_.rand() * (yleftmax - yleftmin))	
+		return xleft, yleft, wtheta, hlen	
 
 	##
-	def _create_walls(self, xLeft, yLeft, thetas, wLens, fColor):
+	def _create_walls(self, xleft, yleft, thetas, wlens, fColor):
 		theta1, theta2, theta3 = thetas
-		wLen1,  wLen2,  wLen3  = wLens
-		pt1      = gm.Point(xLeft, yLeft)
+		wlen1,  wlen2,  wlen3  = wlens
+		pt1      = gm.Point(xleft, yleft)
 		dir1     = gm.theta2dir(theta1)
-		pt2      = pt1 + (wLen1 * dir1)
+		pt2      = pt1 + (wlen1 * dir1)
 		dir2     = gm.theta2dir(theta2)
-		pt3      = pt2 + (wLen2 * dir2)
+		pt3      = pt2 + (wlen2 * dir2)
 		dir3     = gm.theta2dir(theta3)
-		pt4      = pt3 + (wLen3 * dir3)
+		pt4      = pt3 + (wlen3 * dir3)
 		pts      = [pt1, pt2, pt3, pt4]
 		if self.verbose_ > 0:
-			print ("Points: ", pt1, pt2, pt3, pt4)
+			print ("points: ", pt1, pt2, pt3, pt4)
 		walls    = pm.create_cage(pts, wThick = self.wth_, fColor=fColor)	
-		#Get the lines within which the balls need to be added. 
+		#get the lines within which the balls need to be added. 
 		self.pts    = pts
 		self.lines_ = []
 		for w in walls:
@@ -273,93 +297,93 @@ class DataSaver:
 	def add_walls(self, fColor=pm.Color(1.0, 0.0, 0.0)):
 		if self.isRect_:
 			return self.add_rectangular_walls(fColor=fColor)
-		xLeft, yLeft, wTheta, hLen = self.sample_walls()
-		walls = self._create_walls(xLeft, yLeft, (-wTheta, wTheta, 180-wTheta),
-							 (hLen, hLen, hLen), fColor=fColor)
+		xleft, yleft, wtheta, hlen = self.sample_walls()
+		walls = self._create_walls(xleft, yleft, (-wtheta, wtheta, 180-wtheta),
+							 (hlen, hlen, hlen), fColor=fColor)
 		return walls		
 
 
-	def find_point_within_lines(self, minDist):
+	def find_point_within_lines(self, mindist):
 		'''
-			Find a point within the lines which is atleast minDist
+			find a point within the lines which is atleast mindist
 			from all the boundaries. 
 		'''		
 		x = int(np.round(self.pts[0].x() + self.rand_.rand()*(self.pts[2].x() - self.pts[0].x())))
 		y = int(np.round(self.pts[1].y() + self.rand_.rand()*(self.pts[3].y() - self.pts[1].y())))
 		pt = gm.Point(x,y)
-		isInside = True
+		isinside = True
 		dist = []
 		for (i,l) in enumerate(self.lines_):
-			#Note we are finding the signed distance
+			#note we are finding the signed distance
 			dist.append(l.distance_to_point(pt))
-			if dist[i] <= minDist:
-				isInside=False
+			if dist[i] <= mindist:
+				isinside=False
 		md = min(dist)
-		return pt, isInside, md
+		return pt, isinside, md
 					
-	#Generates and adds the required number of balls. 
+	#generates and adds the required number of balls. 
 	def add_balls(self):
-		#Generate ball definitions
-		allR, allPos = [], []
+		#generate ball definitions
+		allr, allpos = [], []
 		for i in range(self.numBalls_):
-			placeFlag = True
-			while placeFlag:
-					#Randomly sample the radius of the ball
+			placeflag = True
+			while placeflag:
+					#randomly sample the radius of the ball
 					r    = int(np.floor(self.bmn_ + self.rand_.rand() * (self.bmx_ - self.bmn_))) 
-					bDef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
-					#Find a position to keep the ball
+					bdef = pm.BallDef(radius=r, fColor=pm.Color(0.5, 0.5, 0.5))
+					#find a position to keep the ball
 					'''
-					if self.isRect_:
-						xLeft, yTop = self.pts[0].x_asint(), self.pts[0].y_asint()
-						#xMn  = xLeft + 2 * r + self.wth_
-						#yMn  = yTop  + 2 * r + self.wth_
-						#xMx  = xLeft + self.whl_ - self.wth_ - 2 * r
-						#yMx  = yTop  + self.wvl_ - self.wth_ - 2 * r
-						xMn  = xLeft + r + self.wth_ + 2 #Give some margin
-						yMn  = yTop  + r + self.wth_ + 2
-						xMx  = xLeft + self.whl_ - self.wth_ - r - 2
-						yMx  = yTop  + self.wvl_ - self.wth_ - r - 2
-						xLoc = int(np.floor(xMn + (xMx - xMn) * self.rand_.rand()))
-						yLoc = int(np.floor(yMn + (yMx - yMn) * self.rand_.rand()))
+					if self.isrect_:
+						xleft, ytop = self.pts[0].x_asint(), self.pts[0].y_asint()
+						#xmn  = xleft + 2 * r + self.wth_
+						#ymn  = ytop  + 2 * r + self.wth_
+						#xmx  = xleft + self.whl_ - self.wth_ - 2 * r
+						#ymx  = ytop  + self.wvl_ - self.wth_ - 2 * r
+						xmn  = xleft + r + self.wth_ + 2 #give some margin
+						ymn  = ytop  + r + self.wth_ + 2
+						xmx  = xleft + self.whl_ - self.wth_ - r - 2
+						ymx  = ytop  + self.wvl_ - self.wth_ - r - 2
+						xloc = int(np.floor(xmn + (xmx - xmn) * self.rand_.rand()))
+						yloc = int(np.floor(ymn + (ymx - ymn) * self.rand_.rand()))
 					else:
 					'''
-					findFlag = True
+					findflag = True
 					count    = 0
-					while findFlag:
-						pt, isValid, md = self.find_point_within_lines(r + self.wth_ + 2) #2 is safety margin	
+					while findflag:
+						pt, isvalid, md = self.find_point_within_lines(r + self.wth_ + 2) #2 is safety margin	
 						count += 1
-						if isValid:
-							findFlag=False
+						if isvalid:
+							findflag=False
 						if count >= 500:
-							print "Failed to find a point to place the ball"
+							print "failed to find a point to place the ball"
 							pdb.set_trace()
 					if self.verbose_ > 0:
-						print ("Ball at (%f, %f), dist: %f" % (pt.x(), pt.y(), md))
-					xLoc, yLoc = pt.x_asint(), pt.y_asint()	
-					pt = gm.Point(xLoc, yLoc)
-					#Determine if the ball can be placed at the chosen position or not
-					isOk = True
+						print ("ball at (%f, %f), dist: %f" % (pt.x(), pt.y(), md))
+					xloc, yloc = pt.x_asint(), pt.y_asint()	
+					pt = gm.Point(xloc, yloc)
+					#determine if the ball can be placed at the chosen position or not
+					isok = True
 					for j in range(i):
-						dist = pt.distance(allPos[j])
+						dist = pt.distance(allpos[j])
 						if self.verbose_ > 0:
-							print ("Placement Dist:", dist)
-						isOk = isOk and dist > (allR[j] + r)
-					if isOk:
-						placeFlag = False
-						allR.append(r)
-						allPos.append(pt)
-			self.world_.add_object(bDef, initPos=gm.Point(xLoc, yLoc))
-		return allPos
+							print ("placement dist:", dist)
+						isok = isok and dist > (allr[j] + r)
+					if isok:
+						placeflag = False
+						allr.append(r)
+						allpos.append(pt)
+			self.world_.add_object(bdef, initPos=gm.Point(xloc, yloc))
+		return allpos
 
-	#Apply intial forces on the balls
+	#apply intial forces on the balls
 	def apply_force(self, model):
 		fs = []
 		for i in range(self.numBalls_):
-			ballName = 'ball-%d' % i
+			ballname = 'ball-%d' % i
 			if self.oppForce_:
-				pos1      = self.world_.get_object_position(ballName)
-				ballName2 = 'ball-%d' % np.mod(i+1,2)
-				pos2      = self.world_.get_object_position(ballName2)
+				pos1      = self.world_.get_object_position(ballname)
+				ballname2 = 'ball-%d' % np.mod(i+1,2)
+				pos2      = self.world_.get_object_position(ballname2)
 				ff        = pos2 - pos1 
 				mag       = self.fmn_ + np.floor(self.rand_.rand()*(self.fmx_ - self.fmn_))			
 				ff.make_unit_norm()
@@ -367,86 +391,219 @@ class DataSaver:
 				fx, fy = ff.x(), ff.y()
 				if self.verbose_ > 0:
 					print (fx, fy)
-				print ('LOC 1')
+				print ('loc 1')
 			else:
 				rnd1, rnd2 = self.rand_.rand(), self.rand_.rand()
-				fDiff      = self.fmx_ - self.fmn_
-				print ('LOC 2 - %f, %f' % (rnd1 * fDiff, rnd2 * fDiff))
-				print ('Min/Max - %f, %f' % (self.fmx_, self.fmn_))
-				#Sample magnitude
-				fMag   = self.fmn_ + np.floor(rnd1 * (self.fmx_ - self.fmn_))
-				#Sample Theta
-				fTheta = rnd1 * np.pi 			
+				fdiff      = self.fmx_ - self.fmn_
+				print ('loc 2 - %f, %f' % (rnd1 * fdiff, rnd2 * fdiff))
+				print ('min/max - %f, %f' % (self.fmx_, self.fmn_))
+				#sample magnitude
+				fmag   = self.fmn_ + np.floor(rnd1 * (self.fmx_ - self.fmn_))
+				#sample theta
+				ftheta = rnd1 * np.pi 			
 				if self.rand_.rand() > 0.5:
-					fTheta = -fTheta
-				fx, fy = fMag * np.cos(fTheta), fMag * np.sin(fTheta)
-			print ('FORCE - FX: %f, FY: %f' % (fx, fy))
+					ftheta = -ftheta
+				fx, fy = fmag * np.cos(ftheta), fmag * np.sin(ftheta)
+			print ('force - fx: %f, fy: %f' % (fx, fy))
 			f  = gm.Point(fx, fy)
-			model.apply_force(ballName, f, forceT=1.0) 
+			model.apply_force(ballname, f, forceT=1.0) 
 			fs.append(f)
 		return model, fs
 
 
-def save_nonrect_arena_val(numSeq=100):
-	sv = DataSaver(wThick=20, isRect=False, mxForce=1e+5, wLen=300,
-								 mnSeqLen=10, mxSeqLen=100, wTheta=[23, 38, 45, 53])
-	sv.save(numSeq=numSeq)	
+def save_nonrect_arena_val(numseq=100):
+	sv = datasaver(wthick=20, isrect=False, mxforce=1e+5, wlen=300,
+								 mnseqlen=10, mxseqlen=100, wtheta=[23, 38, 45, 53])
+	sv.save(numseq=numseq)	
 
-def save_nonrect_arena_train(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None, 
-														 mnWLen=500, mxWLen=800, arenaSz=1600, mnForce=3e+4, 
-														 mxForce=8e+4):
-	drName = '/work5/pulkitag/projPhysics/'
-	sv = DataSaver(rootPath=drName, wThick=30, isRect=False, mnForce=mnForce, mxForce=mxForce, 
-								 mnWLen=mnWLen, mxWLen=mxWLen, numBalls=numBalls,
-								 mnSeqLen=10, mxSeqLen=200, mnBallSz=25, mxBallSz=25, wTheta=[30, 60],
-								 arenaSz=arenaSz, svPrefix=svPrefix)
-	sv.save(numSeq=numSeq)	
+def save_nonrect_arena_train(numseq=10000, oppforce=False, numballs=1, svprefix=None, 
+														 mnwlen=500, mxwlen=800, arenasz=1600, mnforce=3e+4, 
+														 mxforce=8e+4):
+	drname = '/data0/pulkitag/projphysics/'
+	sv = datasaver(rootpath=drname, wthick=30, isrect=False, mnforce=mnforce, mxforce=mxforce, 
+								 mnwlen=mnwlen, mxwlen=mxwlen, numballs=numballs,
+								 mnseqlen=10, mxseqlen=200, mnballsz=25, mxballsz=25, wtheta=[30, 60],
+								 arenasz=arenasz, svprefix=svprefix)
+	sv.save(numseq=numseq)	
 
 
 def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None,
 										mnForce=3e+4, mxForce=8e+4, mnWLen=300, mxWLen=550, arenaSz=700,
 										mnSeqLen=10, mxSeqLen=200):
 
-	drName = '/data0/pulkitag/projPhysics/'
+	drName = '/data0/pulkitag/projphysics/'
 	sv = DataSaver(wThick=30, isRect=True, mnForce=mnForce, mxForce=mxForce, 
 								 mnWLen=mnWLen, mxWLen=mxWLen, mnSeqLen=mnSeqLen, mxSeqLen=mxSeqLen,
 								 numBalls=numBalls, mnBallSz=25, mxBallSz=25, arenaSz=arenaSz,
 								 oppForce=oppForce, svPrefix=svPrefix, rootPath=drName)
 	sv.save(numSeq=numSeq)	
 
-def save_multishape_rect_arena(numSeq=1000, numBalls=1, oppForce=False):
-	drName = '/data1/pulkitag/projPhysics/'
-	sv = DataSaver(rootPath=drName,numBalls=numBalls,wThick=20, isRect=True, mnForce=1e+4,
-								 mxForce=1e+5, mnWLen=400, mxWLen=400,
-								 mnSeqLen=40, mxSeqLen=40, mnBallSz=25, mxBallSz=25, oppForce=oppForce)
-	sv.save(numSeq=numSeq)	
+def save_multishape_rect_arena(numseq=1000, numballs=1, oppforce=False):
+	drname = '/data1/pulkitag/projphysics/'
+	sv = datasaver(rootpath=drname,numballs=numballs,wthick=20, isrect=True, mnforce=1e+4,
+								 mxforce=1e+5, mnwlen=400, mxwlen=400,
+								 mnseqlen=40, mxseqlen=40, mnballsz=25, mxballsz=25, oppforce=oppforce)
+	sv.save(numseq=numseq)	
 
 
+
+class CustomWorld:
+	def __init__(self, numballs=1, ballsz=25, wthick=30,
+							 isrect=True, wtheta=30, wlen=300,
+							 arenasz=667, verbose=0, ballLocs=[gm.Point(120,120)],
+							 forces=[gm.Point(5e+4, 5e+4)], **kwargs):
+		self.numballs_   = numballs
+		self.bsz_  = ballsz
+		self.bloc_ = copy.deepcopy(ballLocs)
+		self.forces_  = copy.deepcopy(forces)
+		self.wthick_  = wthick
+		self.wtheta_  = wtheta
+		self.isrect_  = isrect
+		self.wlen_    = wlen
+		self.asz_     = arenasz
+		self.verbose_ = verbose
+		self.xSz_     = arenasz
+		self.ySz_     = arenasz
+
+	def generate_model(self):
+		#get the coordinates of the top point
+		#create the world
+		self.world_ = pm.World(xSz=self.asz_, ySz=self.asz_)
+		#add the walls
+		self.walls_   = self.add_walls()
+		#add the balls
+		self.add_balls()
+		#create physics simulation
+		self.model_   = pm.Dynamics(self.world_)
+		self.apply_force()
+
+	def get_glimpse(self, ballNum=None, cropSz=128):
+		self.model_.step()
+		im = self.model_.generate_image()
+		print (im.shape)
+		position = np.zeros((2*self.numballs_,))
+		velocity = np.zeros((2*self.numballs_,))
+		imBalls = []
+		for b in range(self.numballs_):
+			ballName = 'ball-%d' % b
+			ball     = self.model_.get_object(ballName)
+			pos      = ball.get_position()
+			vel      = ball.get_velocity()
+			position[2*b] = pos.x()
+			position[2*b+1] = pos.y()
+			velocity[2*b] = vel.x()
+			velocity[2*b+1] = vel.y()
+			xMid, yMid = round(pos.x()), round(pos.y())
+			if cropSz is not None:
+				imBall = 255 * np.ones((cropSz, cropSz,3)).astype(np.uint8)
+				x1, x2 = max(0, xMid - cropSz/2.0), min(self.xSz_, xMid + cropSz/2.0)
+				y1, y2 = max(0, yMid - cropSz/2.0), min(self.ySz_, yMid + cropSz/2.0)
+				print xMid, x1, x2, cropSz
+				#xSz, ySz = x2 - x1, y2 - y1
+				imX1 = int(cropSz/2.0  - (xMid - x1))
+				imX2 = int(cropSz/2.0  + (x2 - xMid))
+				imY1 = int(cropSz/2.0  - (yMid - y1))
+				imY2 = int(cropSz/2.0  + (y2 - yMid))
+				imBall[imY1:imY2,imX1:imX2,:] = im[int(y1):int(y2), int(x1):int(x2),0:3]
+				imBalls.append(imBall)
+		return imBalls, position, velocity
+
+	def apply_force(self):
+		for b in range(self.numballs_):
+			ballname = 'ball-%d' % b
+			self.model_.apply_force(ballname, self.forces_[b], forceT=1.0) 
+
+	def add_walls(self, xleft=20, yleft=20, hLen=None, vLen=None, 
+								fColor=pm.Color(1.0, 0.0, 0.0)):
+		if hLen is None:
+			hLen = self.wlen_
+		if vLen is None:
+			vLen = self.wlen_
+		wtheta = self.wtheta_
+		if type(wtheta) == list:
+			th1, th2, th3 = wtheta
+		else:
+			th1, th2, th3 = -wtheta, wtheta, 180-wtheta
+		th1, th2, th3 = fix_theta_range(th1), fix_theta_range(th2), fix_theta_range(th3)
+		walls = self._create_walls(xleft, yleft, (th1, th2, th3),
+							 (vLen, hLen, vLen), fColor=fColor)
+		return walls		
+
+	##
+	def _create_walls(self, xleft, yleft, thetas, wlens, fColor):
+		theta1, theta2, theta3 = thetas
+		wlen1,  wlen2,  wlen3  = wlens
+		pt1      = gm.Point(xleft, yleft)
+		dir1     = gm.theta2dir(theta1)
+		pt2      = pt1 + (wlen1 * dir1)
+		dir2     = gm.theta2dir(theta2)
+		pt3      = pt2 + (wlen2 * dir2)
+		dir3     = gm.theta2dir(theta3)
+		pt4      = pt3 + (wlen3 * dir3)
+		pts      = [pt1, pt2, pt3, pt4]
+		if self.verbose_ > 0:
+			print 'Wall Points: %s, %s, %s, %s' % (pt1, pt2, pt3, pt4)
+		walls    = pm.create_cage(pts, wThick = self.wthick_, fColor=fColor)	
+		#get the lines within which the balls need to be added. 
+		self.pts    = pts
+		self.lines_ = []
+		for w in walls:
+			self.world_.add_object(w)
+		for i in range(len(pts)):
+			self.lines_.append(gm.Line(pts[i], pts[np.mod(i+1, len(pts))]))		
+		return walls
+
+	#generates and adds the required number of balls. 
+	def add_balls(self):
+		for i in range(self.numballs_):
+			bdef = pm.BallDef(radius=self.bsz_, fColor=pm.Color(0.5, 0.5, 0.5))
+			self.world_.add_object(bdef, initPos=self.bloc_[i])
+
+
+def fix_theta_range(theta):
+	theta = np.mod(theta, 360)
+	if theta > 180:
+		theta = -(360 - theta) 
+	return theta
+	
 def stats_force():
-	#dataDir = '/work5/pulkitag/projPhysics/trainV2-aSz700_wLen300-550_nb1_bSz25-25_f3e+04-8e+04_sLen10-200_wTh30/'
-	dataDir = '/work5/pulkitag/projPhysics/trainV2-aSz700_wLen200-550_nb2_bSz25-25_f8e+03-5e+04_sLen10-200_wTh30_oppFrc'
+	#datadir = '/work5/pulkitag/projphysics/trainv2-asz700_wlen300-550_nb1_bsz25-25_f3e+04-8e+04_slen10-200_wth30/'
+	datadir = '/work5/pulkitag/projphysics/trainv2-asz700_wlen200-550_nb2_bsz25-25_f8e+03-5e+04_slen10-200_wth30_oppfrc'
 	theta = []
 	for i in range(10000):
 		if np.mod(i,1000)==1:
 			print(i)
-		seqFolder = osp.join(dataDir, 'seq%06d' % i)
-		wFile     = osp.join(seqFolder, 'data.mat')
-		data      = sio.loadmat(wFile)
+		seqfolder = osp.join(datadir, 'seq%06d' % i)
+		wfile     = osp.join(seqfolder, 'data.mat')
+		data      = sio.loadmat(wfile)
 		force     = data['force'][:,0]
 		theta.append(np.arctan2(float(force[0]), float(force[1])))
 	return theta
+
 		
-
-
 def delete_garbage():
-	datDir = '/work5/pulkitag/projPhysics/aSz667_wLen300_nb1_bSz15-35_f1e+03-1e+05_sLen10-100_wTh2030-_wTheta60/seq%06d/'
+	datdir = '/work5/pulkitag/projphysics/asz667_wlen300_nb1_bsz15-35_f1e+03-1e+05_slen10-100_wth2030-_wtheta60/seq%06d/'
 	for i in range(6000):
-		seqDir  = datDir % (i)
-		imFile  = seqDir + 'im%06d.jpg'
-		datFile = os.path.join(seqDir, 'data.mat')
-		dat     = sio.loadmat(datFile, squeeze_me=True)
-		N       = dat['position'].shape[1] 		
-		for j in range(N,100):
-			imName = imFile % j
-			if os.path.exists(imName):
-				os.remove(imName)		
+		seqdir  = datdir % (i)
+		imfile  = seqdir + 'im%06d.jpg'
+		datfile = os.path.join(seqdir, 'data.mat')
+		dat     = sio.loadmat(datfile, squeeze_me=True)
+		n       = dat['position'].shape[1] 		
+		for j in range(n,100):
+			imname = imfile % j
+			if os.path.exists(imname):
+				os.remove(imName)	
+
+
+def test_custom_world():
+	cw = CustomWorld(wtheta=[0, 90, -180], verbose=1)
+	cw.generate_model()
+	plt.ion()
+	for i in range(100000):
+		imList, pos, vel = cw.get_glimpse(cropSz=512)
+		plt.imshow(imList[0])
+		plt.show()
+		ip = raw_input()
+		if ip=='q':
+			return
+	return imList, pos, vel	

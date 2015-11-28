@@ -538,6 +538,16 @@ class Dynamics:
 	def set_g(self, g):
 		self.g_ = g
 
+	#Set velocity of a certain object
+	def set_object_velocity(self, objName, vel):
+		assert (objName in self.get_dynamic_object_names())
+		obj = self.get_object(objName)
+		obj.set_velocity(vel)
+		#Update time to collide of this object
+		self.time_to_collide_all(obj, name)
+		#Add all the objects to the collision queue	
+		self.add_all_dynamic_collision_queue()
+
 	#Apply force on an object
 	def apply_force(self, objName, force, forceT=None):
 		'''
