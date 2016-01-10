@@ -10,6 +10,7 @@ import os
 import scipy.io as sio
 import scipy.misc as scm
 import pickle
+import glog
 #Custom Modules
 import dynamics as dy
 import geometry as gm
@@ -571,7 +572,7 @@ class Dynamics:
 		obj = self.get_object(objName)
 		obj.set_velocity(vel)
 		#Update time to collide of this object
-		self.time_to_collide_all(obj, name)
+		self.time_to_collide_all(obj, objName)
 		#Add all the objects to the collision queue	
 		self.add_all_dynamic_collision_queue()
 
@@ -634,7 +635,7 @@ class Dynamics:
 			for i in range(N):
 				name = self.colQueue_.popleft()
 				obj  = self.get_object(name)
-				self.time_to_collide_all(obj, name)	
+				self.time_to_collide_all(obj, name)
 			#Step by the amount that the first object will collide
 			#or otherwise step by deltaT. 
 			mntCol = np.inf
@@ -757,7 +758,6 @@ class Dynamics:
 
 	#delete an object
 	def del_object(self, name):
-		self.world_.del_object(name)
 		if name in self.get_dynamic_object_names():
 			del self.isStep_[name]
 			del self.tCol_[name]    
@@ -765,11 +765,18 @@ class Dynamics:
 			del self.nrmlCol_[name] 
 			del self.ptCol_[name]
 			self.colQueue_.remove(name)
-			#Update time to collide of this object
-			self.time_to_collide_all(obj, name)
-			#Add all the objects to the collision queue	
-			self.add_all_dynamic_collision_queue()
-				
+		#Check if any other object has the deleted object in its collision list
+		for nm in self.get_dynamic_object_names():
+			if nm == name:
+				continue
+			obj, objName = self.objCol_[nm]
+			if objName == name:
+				#Reset the collision of this object
+				self._include_object(nm)
+		self.world_.del_object(name)
+		#Add all the objects to the collision queue	
+		self.add_all_dynamic_collision_queue()
+
 	#Delete all the dynamic objects
 	def del_all_dynamic_objects(self):
 		for name in self.get_dynamic_object_names():
