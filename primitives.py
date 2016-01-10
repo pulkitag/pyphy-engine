@@ -140,7 +140,7 @@ def get_block_im(blockDir, fColor=Color(1.0, 0.0, 0.0),
 	mnPt  = gm.Point(mnX, mnY)
 	pt1, pt2  = pt1 - mnPt, pt2 - mnPt
 	pt3, pt4  = pt3 - mnPt, pt4 - mnPt	
-	print pt1, pt2, pt3, pt4
+	#print pt1, pt2, pt3, pt4
 
 	if sColor is None:
 		sColor = fColor
@@ -398,6 +398,15 @@ class Ball:
 		self.vel_  = initVel
 		return self
 
+	@classmethod
+	def from_self(cls, other):
+		self = cls()
+		attrs =  [n for n in dir(other) if not callable(getattr(other,n))\
+								 and not n.startswith("__")]
+		for attr in attrs:
+			setattr(self, attr, getattr(other, attr))
+		return self
+
 	def set_name(self, name):
 		self.name_ = name
 
@@ -411,10 +420,23 @@ class Ball:
 
 	#Imprint the ball
 	def imprint(self, cr, xSz, ySz):
+		'''
+			xSz, ySz: Arena Size
+		'''
 		#Get the position of bottom left corner.
-		y, x  = self.pos_.y_asint() - self.yOff_, self.pos_.x_asint() - self.xOff_		
+		y, x  = self.pos_.y_asint() - self.yOff_, self.pos_.x_asint() - self.xOff_
+		#If the ball is outside the arena then adjust for it
+		yBallSt = max(0, -y)
+		yBallEn = max(0,min(self.ySz_, self.ySz_ - (y + self.ySz_ - ySz)))
+		xBallSt = max(0, -x)
+		xBallEn = max(0,min(self.xSz_, self.xSz_ - (x + self.xSz_ - xSz)))
 		srcIm = np.zeros((ySz, xSz, 4), dtype=np.uint8)
-		srcIm[y:y+self.ySz_, x:x+self.xSz_,:] = self.data_.im[:] 
+		#srcIm[y:y+self.ySz_, x:x+self.xSz_,:] = self.data_.im[:] 
+		yLen, xLen = yBallEn - yBallSt, xBallEn - xBallSt
+		if yLen >0 and xLen > 0:
+			yImSt, xImSt = max(0, y), max(0, x)
+			srcIm[yImSt:yImSt+yLen, xImSt:xImSt+xLen,:] =\
+								 self.data_.im[yBallSt:yBallEn, xBallSt:xBallEn,:] 
 		surface = cairo.ImageSurface.create_for_data(srcIm, 
 								cairo.FORMAT_ARGB32, xSz,ySz)
 		cr.set_source_surface(surface)		
@@ -527,12 +549,17 @@ class Dynamics:
 		self.nrmlCol_ = co.OrderedDict()
 		self.ptCol_   = co.OrderedDict() #Expected point of coll
 		for name in self.get_dynamic_object_names():
-			self.isStep_[name]  = False
-			self.tCol_[name]    = 0
-			self.objCol_[name]  = (None, None)
-			self.nrmlCol_[name] = None
-			self.ptCol_[name]   = None
-			self.colQueue_.append(name)
+			self._include_object(name)		
+	
+	#Include the object with name, name in the dyanmics
+	def _include_object(self, name):
+		assert name in self.get_dynamic_object_names()
+		self.isStep_[name]  = False
+		self.tCol_[name]    = 0
+		self.objCol_[name]  = (None, None)
+		self.nrmlCol_[name] = None
+		self.ptCol_[name]   = None
+		self.colQueue_.append(name)
 
 	#Set gravity
 	def set_g(self, g):
@@ -707,7 +734,15 @@ class Dynamics:
 	#Get the image
 	def generate_image(self):
 		return self.world_.generate_image()
-								
+							
+	#Add an object
+	def add_object(self, obj, **kwargs):
+		self.world_.add_object(obj, **kwargs)
+		#Reset collision parameters for existing objects
+		#and initiaize for new objects
+		for name in self.get_dynamic_object_names():
+			self._include_object(name)
+			
 	#Get the object
 	def get_object(self, name):
 		return self.world_.get_object(name)
@@ -719,6 +754,33 @@ class Dynamics:
 	#Get object position
 	def get_object_position(self, name):
 		return self.world_.get_object_position(name)
+
+	#delete an object
+	def del_object(self, name):
+		self.world_.del_object(name)
+		if name in self.get_dynamic_object_names():
+			del self.isStep_[name]
+			del self.tCol_[name]    
+			del self.objCol_[name]  
+			del self.nrmlCol_[name] 
+			del self.ptCol_[name]
+			self.colQueue_.remove(name)
+			#Update time to collide of this object
+			self.time_to_collide_all(obj, name)
+			#Add all the objects to the collision queue	
+			self.add_all_dynamic_collision_queue()
+				
+	#Delete all the dynamic objects
+	def del_all_dynamic_objects(self):
+		for name in self.get_dynamic_object_names():
+			self.del_object(name) 
+		self.world_.del_all_dynamic()
+
+	#Reset the dynamics
+	def reset_dynamics(self):
+		for name in self.get_dynamic_object_names():
+			self._include_object(name)
+			self.set_object_velocity(name, gm.Point(0,0)) 
 
 
 #This is useful if one needs to have a lookahead. 
@@ -834,6 +896,15 @@ class World(object):
 			obj     = Ball.from_def(objDef, name, initPos)
 			objType = 'dynamic'
 			self.count_['ball'] += 1
+		elif isinstance(objDef, Ball):
+			name    = 'ball-%d' % self.count_['ball']					
+			obj     = Ball.from_self(objDef)
+			if initPos is None:
+				initPos = obj.get_position()
+			obj.set_position(initPos)
+			obj.set_name(name)
+			objType = 'dynamic'
+			self.count_['ball'] += 1
 		else:
 			raise Exception('Unrecognized object type')
 		
@@ -868,6 +939,12 @@ class World(object):
 		elif name in self.dynamic_.keys():
 			del self.dynamic_[name]
 
+	#Delete all dynamic objects
+	def del_all_dynamic(self):
+		for name in self.dynamic_.keys():
+			self.del_object(name)
+		self.count_['ball'] = 0
+
 	#
 	def get_object_position(self, objName):
 		return self.objects_[objName].get_position()
@@ -889,7 +966,13 @@ class World(object):
 		return data
 
 	#Generate the image of the world
-	def generate_image(self, returnContext=False):
+	def generate_image(self, returnContext=False, 
+								cropObject=None, cropSz=None):
+		'''
+			returnContext: returns object of type cairo.Context
+			cropObject   : the object around which image needs to be cropped
+			cropSz       : the size of the image crop
+		'''
 		data    = np.zeros((self.ySz_, self.xSz_, 4), dtype=np.uint8)
 		data[:] = self.baseCanvas_.im[:]
 		surface = cairo.ImageSurface.create_for_data(data, 

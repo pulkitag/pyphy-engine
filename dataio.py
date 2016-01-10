@@ -132,9 +132,9 @@ class DataSaver:
 		seqLen = int(self.mnSeqLen_ + self.rand_.rand() * (self.mxSeqLen_ - self.mnSeqLen_))
 		self.seqLen_ = seqLen
 		model, f, ballPos, walls = self.generate_model()
-		force    = np.zeros((2 * self.numBalls_, self.seqLen_ - 1)).astype(np.float32)
-		position = np.zeros((2 * self.numBalls_, self.seqLen_ - 1)).astype(np.float32)
-		velocity = np.zeros((2 * self.numBalls_, self.seqLen_ - 1)).astype(np.float32)
+		force    = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
+		position = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
+		velocity = np.zeros((2 * self.numBalls_, self.seqLen_)).astype(np.float32)
 		imList  = []
 		imBalls = []
 		for b in range(self.numBalls_):
@@ -142,62 +142,60 @@ class DataSaver:
 			fb = f[b]
 			st, en = 2*b, 2*b + 1
 			force[st,0], force[en,0] = fb.x(), fb.y()
-		for i in range(self.seqLen_ - 1):
+		#Previous position
+		pPos = np.nan * np.zeros((self.numBalls_,2))
+		for i in range(self.seqLen_):
 			model.step()
 			im = model.generate_image()
+			vx, vy = None, None
 			for j in range(self.numBalls_):
 				ballName = 'ball-%d' % j
 				ball     = model.get_object(ballName)
 				pos      = ball.get_position()
-				vel      = ball.get_velocity()
 				position[2*j,   i] = pos.x()
 				position[2*j+1, i] = pos.y()
-				velocity[2*j,   i] = vel.x()
-				velocity[2*j+1, i] = vel.y()
-				#print (vel.x(), vel.y())
+				#Speed should not be predicted, instead we should just predict
+				#delta in position. The difference between the two is critical 
+				#due to collisions. 
+				if not np.isnan(pPos[j][0]):
+					vx = pos.x() - pPos[j][0]
+					vy = pos.y() - pPos[j][1]
+				pPos[j][0], pPos[j][1] = pos.x(), pos.y()
 				xMid, yMid = round(pos.x()), round(pos.y())
-				#xMid, yMid = pos.x(), pos.y()
 				if cropSz is not None:
 					imBall = 255 * np.ones((cropSz, cropSz,3)).astype(np.uint8)
+					#Cropping coordinates in the original image
 					x1, x2 = max(0, xMid - cropSz/2.0), min(self.xSz_, xMid + cropSz/2.0)
 					y1, y2 = max(0, yMid - cropSz/2.0), min(self.ySz_, yMid + cropSz/2.0)
-					#print xMid, x1, x2, cropSz
-					#xSz, ySz = x2 - x1, y2 - y1
+					#Coordinates in the cropped image centerd at the ball
 					imX1 = int(round(cropSz/2.0  - (xMid - x1)))
 					imX2 = int(round(cropSz/2.0  + (x2 - xMid)))
 					imY1 = int(round(cropSz/2.0  - (yMid - y1)))
 					imY2 = int(round(cropSz/2.0  + (y2 - yMid)))
-					imBall[imY1:imY2,imX1:imX2,:] = im[int(y1):int(y2), int(x1):int(x2),0:3]
-					position[2*j, i] = position[2*j, i] - int(x1) + imX1 
-					position[2*j+1, i] = position[2*j+1, i] - int(y1) + imY1 
-
-					'''
-					x1, x2 = max(0, int(xMid - cropSz/2.0)), min(self.xSz_, int(xMid + cropSz/2.0))
-					y1, y2 = max(0, int(yMid - cropSz/2.0)), min(self.ySz_, int(yMid + cropSz/2.0))
-					xSz, ySz = x2 - x1, y2 - y1
-					imX1 = int(cropSz/2.0) - int(np.floor(xSz/2.0))
-					imX2 = int(cropSz/2.0) + int(np.ceil(xSz/2.0))
-					imY1 = int(cropSz/2.0) - int(np.floor(ySz/2.0))
-					imY2 = int(cropSz/2.0) + int(np.ceil(ySz/2.0))
+					x1, x2 = int(round(x1)), int(round(x2))
+					y1, y2 = int(round(y1)), int(round(y2))
 					imBall[imY1:imY2,imX1:imX2,:] = im[y1:y2, x1:x2,0:3]
-					'''
-					
+					position[2*j, i] = position[2*j, i] - x1 + imX1 
+					position[2*j+1, i] = position[2*j+1, i] - y1 + imY1 
+
 					if procSz is not None:
 						posScale  = float(procSz)/float(cropSz)
 						imBall = scm.imresize(imBall, (procSz, procSz))
 						position[2*j, i]   = position[2*j, i] * posScale
 						position[2*j+1, i] = position[2*j+1, i] * posScale
-						velocity[2*j, i]   = velocity[2*j, i] * posScale
-						velocity[2*j+1, i] = velocity[2*j+1, i] * posScale
+						if vx is not None:
+							velocity[2*j, i-1]   = vx * posScale
+							velocity[2*j+1, i-1] = vy * posScale
 					imBalls[j].append(imBall)
 			imList.append(im)
 		if cropSz is None:
 			return imList
 		else:
-			return imBalls, force, velocity, position 
+			return imBalls, force[:, 0:self.seqLen_],\
+						 velocity[:, 0:self.seqLen_],\
+						 position[:, 0:self.seqLen_] 
 		
-
-	def generate_model(self):
+	def _generate_model(self):
 		#get the coordinates of the top point
 		#create the world
 		self.world_ = pm.World(xSz=self.xSz_, ySz=self.ySz_)
@@ -207,11 +205,13 @@ class DataSaver:
 		ballpos = self.add_balls()
 		#create physics simulation
 		model = pm.Dynamics(self.world_)
+		return model
+
+	def generate_model(self):
+		model = self._generate_model()
 		#apply initial forces and return the result. 	
 		model, fs =  self.apply_force(model)	
 		return model, fs, ballpos, walls
-
-	
 
 	#this is mostly due to legacy reasons. 
 	def add_rectangular_walls(self, fColor=pm.Color(1.0, 0.0, 0.0)):
@@ -395,8 +395,9 @@ class DataSaver:
 			else:
 				rnd1, rnd2 = self.rand_.rand(), self.rand_.rand()
 				fdiff      = self.fmx_ - self.fmn_
-				print ('loc 2 - %f, %f' % (rnd1 * fdiff, rnd2 * fdiff))
-				print ('min/max - %f, %f' % (self.fmx_, self.fmn_))
+				if self.verbose_ > 0:
+					print ('loc 2 - %f, %f' % (rnd1 * fdiff, rnd2 * fdiff))
+					print ('min/max - %f, %f' % (self.fmx_, self.fmn_))
 				#sample magnitude
 				fmag   = self.fmn_ + np.floor(rnd1 * (self.fmx_ - self.fmn_))
 				#sample theta
@@ -404,7 +405,8 @@ class DataSaver:
 				if self.rand_.rand() > 0.5:
 					ftheta = -ftheta
 				fx, fy = fmag * np.cos(ftheta), fmag * np.sin(ftheta)
-			print ('force - fx: %f, fy: %f' % (fx, fy))
+			if self.verbose_ > 0:
+				print ('force - fx: %f, fy: %f' % (fx, fy))
 			f  = gm.Point(fx, fy)
 			model.apply_force(ballname, f, forceT=1.0) 
 			fs.append(f)
@@ -465,7 +467,7 @@ class CustomWorld:
 		self.xSz_     = arenasz
 		self.ySz_     = arenasz
 
-	def generate_model(self):
+	def _generate_model(self):
 		#get the coordinates of the top point
 		#create the world
 		self.world_ = pm.World(xSz=self.asz_, ySz=self.asz_)
@@ -475,6 +477,9 @@ class CustomWorld:
 		self.add_balls()
 		#create physics simulation
 		self.model_   = pm.Dynamics(self.world_)
+
+	def generate_model(self):
+		self._generate_model()
 		self.apply_force()
 
 	def get_glimpse(self, ballNum=None, cropSz=128):
