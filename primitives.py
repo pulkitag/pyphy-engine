@@ -789,6 +789,21 @@ class Dynamics:
 			self._include_object(name)
 			self.set_object_velocity(name, gm.Point(0,0)) 
 
+	#Get the name of colliding objects in the next step
+	def get_colliding_object_names(self):
+		'''
+			This function has to be tested and verified.
+			It will also miss out the corner cases because
+			one condition for finding collisions if that tCol_[name] > 0
+			because initially all objects have tCol_[name] set to 0
+			this can be fixed, but i haven't yet. 
+		'''
+		names = []
+		for name in self.get_dynamic_object_names():
+			if self.tCol_[name] > 0 and self.tCol_[name] < self.deltaT_:
+				names.append(name)
+		return names	
+
 
 #This is useful if one needs to have a lookahead. 
 class DynamicsHorizon:

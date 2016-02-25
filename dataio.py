@@ -35,7 +35,7 @@ class DataSaver:
 		'''
 		#print (rootPath)
 		#The name of the experiment. 
-		self.expStr_   = 'aSz%d_wLen%d-%d_nb%d_bSz%d-%d_f%.0e-%.0e_sLen%d-%d_wTh%d' % (arenaSz,
+		self.expStr_   = 'aSz%d_wLen%d-%d_nb%d_bSz%d-%d_f%.2e-%.2e_sLen%d-%d_wTh%d' % (arenaSz,
 										  mnWLen, mxWLen, numBalls, mnBallSz, mxBallSz, mnForce, mxForce,
 										  mnSeqLen, mxSeqLen, wThick)
 		if svPrefix is not None:
@@ -195,7 +195,7 @@ class DataSaver:
 						 velocity[:, 0:self.seqLen_],\
 						 position[:, 0:self.seqLen_] 
 		
-	def _generate_model(self):
+	def _generate_model(self, returnPos=False):
 		#get the coordinates of the top point
 		#create the world
 		self.world_ = pm.World(xSz=self.xSz_, ySz=self.ySz_)
@@ -205,10 +205,13 @@ class DataSaver:
 		ballpos = self.add_balls()
 		#create physics simulation
 		model = pm.Dynamics(self.world_)
-		return model
+		if returnPos:
+			return model, ballpos, self.pts, walls
+		else:
+			return model
 
 	def generate_model(self):
-		model = self._generate_model()
+		model, ballpos, _, walls = self._generate_model(returnPos=True)
 		#apply initial forces and return the result. 	
 		model, fs =  self.apply_force(model)	
 		return model, fs, ballpos, walls
@@ -431,13 +434,15 @@ def save_nonrect_arena_train(numseq=10000, oppforce=False, numballs=1, svprefix=
 
 def save_rect_arena(numSeq=10000, oppForce=False, numBalls=1, svPrefix=None,
 										mnForce=3e+4, mxForce=8e+4, mnWLen=300, mxWLen=550, arenaSz=700,
-										mnSeqLen=10, mxSeqLen=200):
+										mnSeqLen=10, mxSeqLen=200, randSeed=None):
 
+	print (mnForce, mxForce)
 	drName = '/data0/pulkitag/projphysics/'
 	sv = DataSaver(wThick=30, isRect=True, mnForce=mnForce, mxForce=mxForce, 
 								 mnWLen=mnWLen, mxWLen=mxWLen, mnSeqLen=mnSeqLen, mxSeqLen=mxSeqLen,
 								 numBalls=numBalls, mnBallSz=25, mxBallSz=25, arenaSz=arenaSz,
-								 oppForce=oppForce, svPrefix=svPrefix, rootPath=drName)
+								 oppForce=oppForce, svPrefix=svPrefix, rootPath=drName, 
+								 randSeed=randSeed)
 	sv.save(numSeq=numSeq)	
 
 def save_multishape_rect_arena(numseq=1000, numballs=1, oppforce=False):
